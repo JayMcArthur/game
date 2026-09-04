@@ -51,6 +51,13 @@ export type EntityType = z.infer<typeof entityTypeSchema>;
 const cardSchema = identifierTypeSchema;
 export type Card = z.infer<typeof cardSchema>;
 
+const effectTextNumberSchema = z.object({
+  card: cardSchema,
+  occurrenceIndex: z.number().int().nonnegative(),
+  value: z.number().int().min(0).max(7),
+});
+export type EffectTextNumber = z.infer<typeof effectTextNumberSchema>;
+
 const shopItemSchema = cardSchema.extend({ price: z.number() });
 const VisualEffectBoxSchema = z.object({
   startIndex: z.number(),
@@ -138,6 +145,7 @@ export type SelectionItem =
   | { type: "animated"; payload: EntityType }
   | { type: "deck"; payload: DeckName }
   | { type: "number"; payload: number }
+  | { type: "effectTextNumber"; payload: EffectTextNumber }
   | { type: "boolean"; payload: boolean }
   | { type: "string"; payload: string }
   | {
@@ -171,6 +179,10 @@ const selectionItemSchema: z.ZodType<SelectionItem> = z.lazy(() =>
     z.object({ type: z.literal("monster"), payload: entityTypeSchema }),
     z.object({ type: z.literal("deck"), payload: deckNameSchema }),
     z.object({ type: z.literal("number"), payload: z.number() }),
+    z.object({
+      type: z.literal("effectTextNumber"),
+      payload: effectTextNumberSchema,
+    }),
     z.object({ type: z.literal("boolean"), payload: z.boolean() }),
     z.object({ type: z.literal("string"), payload: z.string() }),
     z.object({

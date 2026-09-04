@@ -3,7 +3,11 @@
 
 
 import { type OnAttackDeclaredData, type OnDeathMonsterData } from "@/models/types/eventTypes";
-import { partialsEndingWithNumber1to6 } from "@/utils/auxiliary";
+import {
+    findEffectTextNumbers,
+    findValidEffectTextNumberReplacements,
+    replaceEffectTextNumber,
+} from "@/utils/effectTextNumbers";
 import { assertCardMatchesDeck, type Card, CharacterCard, Deck, isDeckType, ItemCard, LootCard, MonsterCard, RoomCard, TreasureCard } from "../cards";
 import { LootCardEffect } from '../stackElement';
 import { Animated } from "../entities/animated";
@@ -24,6 +28,7 @@ import * as room from "./roomEffects";
 import { toSerializedTranslation } from "@/utils/translation";
 import { shuffle } from "@/utils/auxiliary";
 import { type CounterType } from "@/shared/api"
+import { EffectTextNumber } from "../effectTextNumber";
 
 const qq = toSerializedTranslation;
 export function gainCoinsEffect(game: Game, amount: number, issuerType: "issuer" | "current", youMayHandling: [false]): SyncEffectFunction
@@ -1813,20 +1818,51 @@ export function changeNumberInEffectTextEffect(game: Game, val: number, min: num
         if(!target || !(target instanceof ItemCard || target instanceof LootCardEffect))
             return false;
         const targetCard = target instanceof ItemCard ? target : target.card;
-        const partialTexts = targetCard.effectOutcomes.flatMap((outcome) => partialsEndingWithNumber1to6(outcome));
-        const selection = (await data.selectAndRecord(game, data.issuer as Player, 1, 1, partialTexts, qq("pending.numberToChange"), data.serializedCardAndBox, true, true)).selected[0];
-        if(!selection || selection.length === 0)
+        const numberChoices = findEffectTextNumbers(targetCard.effectOutcomes).map(
+            (occurrence) => new EffectTextNumber(targetCard, occurrence),
+        );
+        const selectionResult = await data.selectAndRecord(
+            game,
+            data.issuer as Player,
+            1,
+            1,
+            numberChoices,
+            qq("pending.numberToChange"),
+            data.serializedCardAndBox,
+            true,
+            true,
+        );
+        const selection = selectionResult.selected[0];
+        if(!selection)
             return false;
-        const num = parseInt(selection.at(-1)!);
-        const possibilities = [...(num > min + val - 1 ? [num - val] : []), ...(num < max + val - 1 ? [num + val] : [])];
-        const newNumber = (await data.selectAndRecord(game, data.issuer as Player, 1, 1, possibilities, qq("pending.newNumber"), data.serializedCardAndBox, true, true)).selected[0] as number;
+        const selectionText = selection.textThroughNumber;
+        const currentValue = selection.value;
+        const possibilities = findValidEffectTextNumberReplacements(
+            currentValue,
+            val,
+            min,
+            max,
+        );
+        const newNumberResult = await data.selectAndRecord(
+            game,
+            data.issuer as Player,
+            1,
+            1,
+            possibilities,
+            qq("pending.newNumber"),
+            data.serializedCardAndBox,
+            true,
+            true,
+        );
+        const newNumber = newNumberResult.selected[0];
+        if(newNumber === undefined)
+            return false;
 
-        const newOutcomes = targetCard.effectOutcomes.map((outcome) => {
-            if(outcome.startsWith(selection)) {
-                return outcome.replace(selection, selection.slice(0, -1) + newNumber.toString());
-            }
-            return outcome;
-        });
+        const newOutcomes = replaceEffectTextNumber(
+            targetCard.effectOutcomes,
+            selection.occurrenceIndex,
+            newNumber,
+        );
         const oldOutcomes = targetCard.effectOutcomes;
         targetCard.effectOutcomes = newOutcomes;
         if(targetCard.tags.lastCopiedRestoreOriginalStateIndex !== undefined) {
@@ -1861,7 +1897,7 @@ export function changeNumberInEffectTextEffect(game: Game, val: number, min: num
         targetCard.onAddInPlay(() => targetCard.owner);
         if(target instanceof LootCardEffect)
         {   
-            const lastSelectionLine = selection.split("\n").at(-1)!.toLowerCase();
+            const lastSelectionLine = selectionText.split("\n").at(-1)!.toLowerCase();
             // Replace target string with updated text when necessary.
             const newTargets = target.targets.map((t) => (typeof target.targets[0] === "string" && String(t).startsWith(lastSelectionLine)) 
                 ? String(t).replace(lastSelectionLine, lastSelectionLine.slice(0, -1) + newNumber.toString()) 
@@ -3465,4 +3501,3 @@ export function thisBecomeSoulGainItEffect(game: Game): SyncEffectFunction {
         return true;
     };
 }
-

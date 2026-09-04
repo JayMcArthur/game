@@ -8,6 +8,8 @@ import { Player } from "./entities/player";
 import { isStackElement } from "./stack";
 import { isChooseOneOptions, type ChooseOneOptions } from "./targetSelector";
 import { toSerializedTranslation } from "@/utils/translation";
+import { EffectTextNumber } from "./effectTextNumber";
+
 /**
  * Target Builder - Standalone utility for progressive target selection
  * 
@@ -312,7 +314,12 @@ export class TargetBuilder {
 
     static convertToSelectionItems(options: any[]): SelectionItem[] {
          return options.map(option => {
-
+            if (option instanceof EffectTextNumber) {
+                return {
+                    type: "effectTextNumber",
+                    payload: option.jsonAPI,
+                };
+            }
 
             if (typeof option === 'object' && option !== null && isChooseOneOptions(option)) {
                 return {type: "chooseOne", payload: {description: option.description, card: option.card.jsonAPI, visualEffectBox: option.visualEffectBox}};
@@ -402,6 +409,12 @@ export class TargetBuilder {
             case "string":
             case "boolean":
                 return possibleTargets.find(t => t === identifier.payload);
+            case "effectTextNumber":
+                return possibleTargets.find(
+                    (target) =>
+                        target instanceof EffectTextNumber &&
+                        target.matches(identifier.payload),
+                );
             case "serializedTranslation":
                 return possibleTargets.find(t => t.key === identifier.payload.key);
             case "null":

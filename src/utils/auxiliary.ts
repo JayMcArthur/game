@@ -11,19 +11,6 @@ function shuffle<T>(random: () => number, array: T[]): void {
             array[randomIndex]!, array[currentIndex]!];
     }
 }
-export function partialsEndingWithNumber1to6(str:string): string[] {
-  const result = [];
-  const regex = /\b[1-6]\b/g;   // match a single digit 1–6 as a whole token
-
-  let match;
-  while ((match = regex.exec(str)) !== null) {
-    const endIndex = match.index + match[0].length;
-    result.push(str.slice(0, endIndex).trim());
-  }
-
-  return result;
-}
-
 function print(...args: unknown[]): void {
     console.log(...args);
 }
