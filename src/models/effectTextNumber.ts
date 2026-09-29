@@ -1,5 +1,8 @@
 import type { Card } from "./cards";
-import type { EffectTextNumberOccurrence } from "@/utils/effectTextNumbers";
+import type {
+  EffectTextNumberFormat,
+  EffectTextNumberOccurrence,
+} from "@/utils/effectTextNumbers";
 import type { EffectTextNumber as EffectTextNumberJson } from "@/shared/api";
 
 export class EffectTextNumber {
@@ -10,6 +13,14 @@ export class EffectTextNumber {
 
   get occurrenceIndex(): number {
     return this.occurrence.occurrenceIndex;
+  }
+
+  get format(): EffectTextNumberFormat {
+    return this.occurrence.format;
+  }
+
+  get sourceText(): string {
+    return this.occurrence.sourceText;
   }
 
   get textThroughNumber(): string {

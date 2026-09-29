@@ -54,7 +54,7 @@ export type Card = z.infer<typeof cardSchema>;
 const effectTextNumberSchema = z.object({
   card: cardSchema,
   occurrenceIndex: z.number().int().nonnegative(),
-  value: z.number().int().min(0).max(7),
+  value: z.number().int().nonnegative(),
 });
 export type EffectTextNumber = z.infer<typeof effectTextNumberSchema>;
 

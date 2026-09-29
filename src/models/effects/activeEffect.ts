@@ -6,6 +6,7 @@ import { type OnAttackDeclaredData, type OnDeathMonsterData } from "@/models/typ
 import {
     findEffectTextNumbers,
     findValidEffectTextNumberReplacements,
+    formatEffectTextNumber,
     replaceEffectTextNumber,
 } from "@/utils/effectTextNumbers";
 import { assertCardMatchesDeck, type Card, CharacterCard, Deck, isDeckType, ItemCard, LootCard, MonsterCard, RoomCard, TreasureCard } from "../cards";
@@ -1818,9 +1819,19 @@ export function changeNumberInEffectTextEffect(game: Game, val: number, min: num
         if(!target || !(target instanceof ItemCard || target instanceof LootCardEffect))
             return false;
         const targetCard = target instanceof ItemCard ? target : target.card;
-        const numberChoices = findEffectTextNumbers(targetCard.effectOutcomes).map(
-            (occurrence) => new EffectTextNumber(targetCard, occurrence),
-        );
+        const numberChoices = findEffectTextNumbers(targetCard.effectOutcomes)
+            .filter(
+                ({ value }) =>
+                    findValidEffectTextNumberReplacements(
+                        value,
+                        val,
+                        min,
+                        max,
+                    ).length > 0,
+            )
+            .map((occurrence) => new EffectTextNumber(targetCard, occurrence));
+        if(numberChoices.length === 0)
+            return false;
         const selectionResult = await data.selectAndRecord(
             game,
             data.issuer as Player,
@@ -1898,10 +1909,18 @@ export function changeNumberInEffectTextEffect(game: Game, val: number, min: num
         if(target instanceof LootCardEffect)
         {   
             const lastSelectionLine = selectionText.split("\n").at(-1)!.toLowerCase();
+            const formattedNumber = formatEffectTextNumber(newNumber, selection.format);
+            const updatedSelectionLine = lastSelectionLine.slice(
+                0,
+                -selection.sourceText.length,
+            ) + formattedNumber;
             // Replace target string with updated text when necessary.
-            const newTargets = target.targets.map((t) => (typeof target.targets[0] === "string" && String(t).startsWith(lastSelectionLine)) 
-                ? String(t).replace(lastSelectionLine, lastSelectionLine.slice(0, -1) + newNumber.toString()) 
-                : t);
+            const newTargets = target.targets.map((targetValue) =>
+                typeof targetValue === "string"
+                && targetValue.startsWith(lastSelectionLine)
+                    ? targetValue.replace(lastSelectionLine, updatedSelectionLine)
+                    : targetValue,
+            );
             game.addToStack(new LootCardEffect(target.issuer, target.card, newTargets));
             const oldIndex = game.stack._stack.findIndex((e) => e === target);
             game.stack._stack.at(-1)!.stackId = target.stackId;

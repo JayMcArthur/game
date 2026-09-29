@@ -1,9 +1,49 @@
-const EFFECT_TEXT_NUMBER_PATTERN = /(?<!\w)([0-7])(?!\w)/g;
+const EFFECT_TEXT_NUMBER_PATTERN = /\d+|[❶❷❸❹❺❻➀➁➂➃➄➅]/g;
+
+const FILLED_CIRCLED_DIGITS = ["", "❶", "❷", "❸", "❹", "❺", "❻"];
+const SANS_SERIF_CIRCLED_DIGITS = ["", "➀", "➁", "➂", "➃", "➄", "➅"];
+
+export type EffectTextNumberFormat =
+  | "plain"
+  | "filledCircled"
+  | "sansSerifCircled";
 
 export interface EffectTextNumberOccurrence {
+  format: EffectTextNumberFormat;
   occurrenceIndex: number;
+  sourceText: string;
   textThroughNumber: string;
   value: number;
+}
+
+function numberFormat(sourceText: string): EffectTextNumberFormat {
+  if (FILLED_CIRCLED_DIGITS.includes(sourceText)) return "filledCircled";
+  if (SANS_SERIF_CIRCLED_DIGITS.includes(sourceText)) {
+    return "sansSerifCircled";
+  }
+  return "plain";
+}
+
+function numberValue(sourceText: string): number {
+  const format = numberFormat(sourceText);
+  if (format === "filledCircled") {
+    return FILLED_CIRCLED_DIGITS.indexOf(sourceText);
+  }
+  if (format === "sansSerifCircled") {
+    return SANS_SERIF_CIRCLED_DIGITS.indexOf(sourceText);
+  }
+  return Number(sourceText);
+}
+
+export function formatEffectTextNumber(
+  value: number,
+  format: EffectTextNumberFormat,
+): string {
+  if (format === "filledCircled") return FILLED_CIRCLED_DIGITS[value]!;
+  if (format === "sansSerifCircled") {
+    return SANS_SERIF_CIRCLED_DIGITS[value]!;
+  }
+  return String(value);
 }
 
 export function findEffectTextNumbers(
@@ -13,11 +53,13 @@ export function findEffectTextNumbers(
 
   return outcomes.flatMap((outcome) =>
     [...outcome.matchAll(EFFECT_TEXT_NUMBER_PATTERN)].map((match) => ({
+      format: numberFormat(match[0]),
       occurrenceIndex: occurrenceIndex++,
+      sourceText: match[0],
       textThroughNumber: outcome
         .slice(0, match.index + match[0].length)
         .trim(),
-      value: Number(match[1]),
+      value: numberValue(match[0]),
     })),
   );
 }
@@ -28,14 +70,9 @@ export function findValidEffectTextNumberReplacements(
   minimum: number,
   maximum: number,
 ): number[] {
-  return [
-    ...(currentValue - adjustment >= minimum
-      ? [currentValue - adjustment]
-      : []),
-    ...(currentValue + adjustment <= maximum
-      ? [currentValue + adjustment]
-      : []),
-  ];
+  return [currentValue - adjustment, currentValue + adjustment].filter(
+    (value) => value >= minimum && value <= maximum,
+  );
 }
 
 export function replaceEffectTextNumber(
@@ -52,10 +89,10 @@ export function replaceEffectTextNumber(
   let currentOccurrence = 0;
   let replaced = false;
   const updatedOutcomes = outcomes.map((outcome) =>
-    outcome.replace(EFFECT_TEXT_NUMBER_PATTERN, (value) => {
-      if (currentOccurrence++ !== occurrenceIndex) return value;
+    outcome.replace(EFFECT_TEXT_NUMBER_PATTERN, (sourceText) => {
+      if (currentOccurrence++ !== occurrenceIndex) return sourceText;
       replaced = true;
-      return String(newValue);
+      return formatEffectTextNumber(newValue, numberFormat(sourceText));
     }),
   );
 

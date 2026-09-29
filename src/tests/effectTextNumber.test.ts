@@ -9,15 +9,44 @@ import {
 } from "@/utils/effectTextNumbers";
 
 describe("effect text number selections", () => {
-  it("includes zero and seven but excludes digits that are part of words", () => {
+  it("finds all digit runs and records their numeral format", () => {
     expect(
-      findEffectTextNumbers(["LV1: Gain +0¢, then loot 7."]),
+      findEffectTextNumbers(["LV1: Roll a ❺ or ➁, gain 10¢, then roll 3x."]),
     ).toEqual([
-      { occurrenceIndex: 0, textThroughNumber: "LV1: Gain +0", value: 0 },
+      {
+        occurrenceIndex: 0,
+        sourceText: "1",
+        textThroughNumber: "LV1",
+        value: 1,
+        format: "plain",
+      },
       {
         occurrenceIndex: 1,
-        textThroughNumber: "LV1: Gain +0¢, then loot 7",
-        value: 7,
+        sourceText: "❺",
+        textThroughNumber: "LV1: Roll a ❺",
+        value: 5,
+        format: "filledCircled",
+      },
+      {
+        occurrenceIndex: 2,
+        sourceText: "➁",
+        textThroughNumber: "LV1: Roll a ❺ or ➁",
+        value: 2,
+        format: "sansSerifCircled",
+      },
+      {
+        occurrenceIndex: 3,
+        sourceText: "10",
+        textThroughNumber: "LV1: Roll a ❺ or ➁, gain 10",
+        value: 10,
+        format: "plain",
+      },
+      {
+        occurrenceIndex: 4,
+        sourceText: "3",
+        textThroughNumber: "LV1: Roll a ❺ or ➁, gain 10¢, then roll 3",
+        value: 3,
+        format: "plain",
       },
     ]);
   });
@@ -62,6 +91,25 @@ describe("effect text number selections", () => {
         2,
       ),
     ).toEqual(["Gain 1¢.", "Gain 2¢, then loot 1."]);
+  });
+
+  it("preserves circled numeral formats when replacing a value", () => {
+    expect(replaceEffectTextNumber(["Roll a ❺ or ➄."], 0, 4)).toEqual([
+      "Roll a ❹ or ➄.",
+    ]);
+    expect(replaceEffectTextNumber(["Roll a ❺ or ➄."], 1, 6)).toEqual([
+      "Roll a ❺ or ➅.",
+    ]);
+  });
+
+  it("detects values outside the editable range without offering a replacement", () => {
+    expect(
+      findEffectTextNumbers(["LEVEL 10+ and LEVEL 25+"]).map(
+        ({ value }) => value,
+      ),
+    ).toEqual([10, 25]);
+    expect(findValidEffectTextNumberReplacements(10, 1, 1, 6)).toEqual([]);
+    expect(findValidEffectTextNumberReplacements(25, 1, 1, 6)).toEqual([]);
   });
 
   it("rejects an occurrence that does not exist", () => {
