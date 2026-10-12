@@ -590,8 +590,8 @@ export class Player extends Entity {
   /**
    * Initializes per-turn action counters for this player.
    */
-  initializeTurnCounters(isCurrentPlayer: boolean, lootPlayPerTurn: number): void {
-    this._remainingLootPlay = isCurrentPlayer ? lootPlayPerTurn : 0;
+  initializeTurnCounters(isCurrentPlayer: boolean): void {
+    this._remainingLootPlay = 0;
     this._attackThisTurn = isCurrentPlayer ? 1 : 0;
     this._remainingPurchaseThisTurn = isCurrentPlayer ? 1 : 0;
   }
