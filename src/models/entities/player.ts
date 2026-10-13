@@ -224,7 +224,7 @@ export class Player extends Entity {
    * Returns true if the player has any attack requirement (must attack)
    */
   get hasAttackRequirement(): boolean {
-    return this._mustAttackEntity.length > 0;
+    return this._mustAttackEntity.filter(req => (req.checkAttackRemaining === false || this.attackThisTurn > 0)).length > 0;
   }
   
   /**
