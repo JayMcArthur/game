@@ -3339,7 +3339,7 @@ export function eachOtherPlayerLootsGivesYouOneEffect(game: Game, amount: number
         if (data.issuer instanceof Player === false) return false;
         for (const player of game.players) {
             if (player !== data.issuer) {
-                const choice = (await data.selectAndRecord(game, data.issuer, 1, 1, [qq("common.yes"), qq("common.no")], qq("pending.doYouWantToLootCards", { value: amount, player: data.issuer.id }), data.serializedCardAndBox, true, true)).selected[0];
+                const choice = (await data.selectAndRecord(game, player, 1, 1, [qq("common.yes"), qq("common.no")], qq("pending.doYouWantToLootCards", { value: amount, player: data.issuer.id }), data.serializedCardAndBox, true, true)).selected[0];
                 if(choice !== undefined && choice.key === "common.yes")
                 {
                     game.loot(player, amount);
