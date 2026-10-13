@@ -140,7 +140,7 @@ export class DiceRoll extends StackElement {
   private _effectIssuer: Entity | null = null;
   private _attackRoll: boolean;
   private _fizzled: boolean = false;
-  private _effect: EffectFunction[] | null = null;
+  private _effect: EffectFunction[] | EffectFunction | null = null;
   private _card: Card | null = null;
   private _visualEffectBox: VisualEffectBox | null = null;
   private _targets: any[] = [];
@@ -294,11 +294,13 @@ export class DiceRoll extends StackElement {
    * provide the visual effect box associated with this dice roll.
    */
   private obtainVisualBox(): VisualEffectBox | undefined {
-    if(!this._effect || this._effect.length !== 6)
-      return undefined;
     if(!this.card)
       return undefined;
     if(!this._visualEffectBox)
+      return undefined;
+    if(this._effect instanceof Array === false && this._effect !== null)
+      return this._visualEffectBox;
+    if(!this._effect || this._effect.length !== 6)
       return undefined;
     if(this._effect[this.value - 1]!.name === "trueEffect")
       return undefined;
@@ -328,8 +330,8 @@ export class DiceRoll extends StackElement {
   _TEST_setRandom(random: () => number): void {
     this._random = random;
   }
-  attachEffect(effect: EffectFunction[], card: Card, targets: any[]=[], effectIssuer: Entity | null = null): void {
-    if(effect.length != 6)
+  attachEffect(effect: EffectFunction[] | EffectFunction, card: Card, targets: any[]=[], effectIssuer: Entity | null = null): void {
+    if(effect instanceof Array && effect.length != 6)
       throw new GameError("Effect must have 6 outcomes, one for each dice face.", toSerializedTranslation("error.behaviorError", { error: "Effect must have 6 outcomes, one for each dice face." }));
     this._effect = effect;
     this._card = card;
@@ -344,11 +346,12 @@ export class DiceRoll extends StackElement {
         return; // No effect if attacker or target is dead
       }
     this.value += (this._attackRoll ? this._issuer.attackDiceModifier : 0) + this._issuer.diceModifier;
-    if (this._effect?.length === 6) {
+    if ((this._effect instanceof Array && this._effect.length === 6) || this._effect instanceof Function) {
       const effectIssuer = this._effectIssuer ?? this._issuer;
       // For attack rolls, prepend the dice roll itself to targets so effects can use it as the damage source
       const targetsWithDiceRoll = this._attackRoll ? [this, ...this._targets] : this._targets;
-      await this._effect[this._value - 1]!(new EffectData(this._card!, () => effectIssuer, targetsWithDiceRoll));
+      const effect = this._effect instanceof Array ? this._effect[this._value - 1]! : this._effect;
+      await effect(new EffectData(this._card!, () => effectIssuer, targetsWithDiceRoll));
     }
   }
 }
