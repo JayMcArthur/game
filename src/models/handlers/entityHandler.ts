@@ -403,6 +403,9 @@ export class EntityHandler {
       return;
     }
 
+    if (validMonsters.every(req => (req.checkAttackRemaining === true && player.attackThisTurn <= 0)))
+      return;
+
     // At least one monster constraint remains - must be satisfied
     throw new GameError(
       "You must attack the required monster(s).",
