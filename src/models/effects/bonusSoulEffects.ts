@@ -191,7 +191,7 @@ function soulOfWrathEffect(game: Game, card: Card): OffEffectFunction {
         if(!(eventData.eventIssuer instanceof Player)) return;
         game.cardHandler.addToCounter(eventData.eventIssuer, card, "normal", 1);
         if(card.counters.value("normal") < 6) return;
-        game.cardHandler.addSoul(eventData.eventIssuer, card);
+        game.cardHandler.addSoul(game.currentPlayer, card);
         cleanup();
     });
 
