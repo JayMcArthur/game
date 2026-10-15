@@ -36,6 +36,12 @@ export const serializedTranslationSchema =
       .optional(),
   });
 export type SerializedTranslation = z.infer<typeof serializedTranslationSchema>;
+const effectTextNumberSchema = z.object({
+  description: z.string(),
+  occurrenceIndex: z.number().int().nonnegative(),
+  value: z.number().int().nonnegative(),
+});
+export type EffectTextNumber = z.infer<typeof effectTextNumberSchema>;
 
 const capabilitySchema = z.union([
   z.literal(true),
@@ -48,6 +54,7 @@ export const identifierTypeSchema = z.object({
   slug: z.string(),
   globalId: z.number(),
   orientation: z.union([z.literal("portrait"), z.literal("landscape")]),
+  effectTextNumbers: z.array(effectTextNumberSchema).optional(),
   parent: z.string().optional(),
 });
 export type IdentifierType = z.infer<typeof identifierTypeSchema>;
@@ -65,12 +72,10 @@ export type EntityType = z.infer<typeof entityTypeSchema>;
 const cardSchema = identifierTypeSchema;
 export type Card = z.infer<typeof cardSchema>;
 
-const effectTextNumberSchema = z.object({
+const cardAndEffectTextNumberSchema = effectTextNumberSchema.extend({
   card: cardSchema,
-  occurrenceIndex: z.number().int().nonnegative(),
-  value: z.number().int().nonnegative(),
 });
-export type EffectTextNumber = z.infer<typeof effectTextNumberSchema>;
+export type CardAndEffectTextNumber = z.infer<typeof cardAndEffectTextNumberSchema>;
 const playableCardSchema = cardSchema.extend({
   canBePlayed: capabilitySchema,
 });
@@ -163,7 +168,7 @@ export type SelectionItem =
   | { type: "animated"; payload: EntityType }
   | { type: "deck"; payload: DeckName }
   | { type: "number"; payload: number }
-  | { type: "effectTextNumber"; payload: EffectTextNumber }
+  | { type: "effectTextNumber"; payload: CardAndEffectTextNumber }
   | { type: "boolean"; payload: boolean }
   | { type: "string"; payload: string }
   | {
@@ -200,7 +205,7 @@ export const selectionItemSchema: z.ZodType<SelectionItem> = z.lazy(() =>
     z.object({ type: z.literal("number"), payload: z.number() }),
     z.object({
       type: z.literal("effectTextNumber"),
-      payload: effectTextNumberSchema,
+      payload: cardAndEffectTextNumberSchema,
     }),
     z.object({ type: z.literal("boolean"), payload: z.boolean() }),
     z.object({ type: z.literal("string"), payload: z.string() }),
