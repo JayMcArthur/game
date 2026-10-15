@@ -1880,6 +1880,8 @@ export function changeNumberInEffectTextEffect(game: Game, val: number, min: num
         );
         const oldOutcomes = targetCard.effectOutcomes;
         targetCard.effectOutcomes = newOutcomes;
+        const newEffectNumber = {description: selection.textThroughNumber, value: newNumber, occurrenceIndex: selection.occurrenceIndex};
+        targetCard.addEffectTextNumber(newEffectNumber);
         if(targetCard.tags.lastCopiedRestoreOriginalStateIndex !== undefined) {
             for(let i=targetCard.tags.lastCopiedRestoreOriginalStateIndex + 1; i<targetCard.cleaners.length; i++) {
                 targetCard.cleaners[i]!();

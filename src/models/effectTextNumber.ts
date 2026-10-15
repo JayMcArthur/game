@@ -3,7 +3,7 @@ import type {
   EffectTextNumberFormat,
   EffectTextNumberOccurrence,
 } from "@/utils/effectTextNumbers";
-import type { EffectTextNumber as EffectTextNumberJson } from "@/shared/api";
+import type { CardAndEffectTextNumber, EffectTextNumber as EffectTextNumberJson } from "@/shared/api";
 
 export class EffectTextNumber {
   constructor(
@@ -31,15 +31,16 @@ export class EffectTextNumber {
     return this.occurrence.value;
   }
 
-  get jsonAPI(): EffectTextNumberJson {
+  get jsonAPI(): CardAndEffectTextNumber {
     return {
+      description: this.occurrence.textThroughNumber,
       card: this.card.jsonAPI,
       occurrenceIndex: this.occurrenceIndex,
       value: this.value,
     };
   }
 
-  matches(identifier: EffectTextNumberJson): boolean {
+  matches(identifier: CardAndEffectTextNumber): boolean {
     return (
       this.card.globalId === identifier.card.globalId &&
       this.occurrenceIndex === identifier.occurrenceIndex &&

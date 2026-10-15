@@ -272,7 +272,7 @@ export class DiceRoll extends StackElement {
     this.value = this.value + modifier;
   }
   subtract(modifier: number): void {
-    if (modifier < 0) {
+    if (modifier < 0 || typeof modifier !== "number") {
       throw new GameError("Modifier must be positive", toSerializedTranslation("error.modifierMustBePositive"));
     }
     this.value = this.value - modifier;

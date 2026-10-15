@@ -295,11 +295,11 @@ describe("Game.selectMultiple", () => {
 
     // Player 1 should only see their own selection
     expect(state1.me.pendingSelection).toBeDefined();
-    expect(state1.me.pendingSelection!.options).toEqual([{type: "card", payload: {nameKey: card1.nameKey, slug: card1.slug, globalId: card1.globalId, orientation: "portrait"}}]);
+    expect(state1.me.pendingSelection!.options).toEqual([{type: "card", payload: {nameKey: card1.nameKey, slug: card1.slug, effectTextNumbers: [], globalId: card1.globalId, orientation: "portrait"}}]);
 
     // Player 2 should only see their own selection
     expect(state2.me.pendingSelection).toBeDefined();
-    expect(state2.me.pendingSelection!.options).toEqual([{type: "card", payload: {nameKey: card2.nameKey, slug: card2.slug, globalId: card2.globalId, orientation: "portrait"}}]);
+    expect(state2.me.pendingSelection!.options).toEqual([{type: "card", payload: {nameKey: card2.nameKey, slug: card2.slug, effectTextNumbers: [], globalId: card2.globalId, orientation: "portrait"}}]);
     // Player 3 should not see any selections
     expect(state3.me.pendingSelection).toBeUndefined();
     

@@ -73,6 +73,7 @@ describe("effect text number selections", () => {
     expect(serialized).toEqual({
       type: "effectTextNumber",
       payload: {
+        description: "Prevent the next 1",
         card: card.jsonAPI,
         occurrenceIndex: 0,
         value: 1,
