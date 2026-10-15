@@ -10,8 +10,9 @@ export class TurnHandler {
     private _remainingTurnsInRound: Player[] = [];
     private _baseOrder: Player[] = [];
     private _skipTurnNextRoundList: Player[] = [];
+    private _game: Game;
 
-    constructor() { }
+    constructor(game: Game) { this._game = game; }
     initialize(baseOrder: Player[]) : void {
         this._isInitialized = true;
         this._roundIndex = 1;
@@ -38,6 +39,7 @@ export class TurnHandler {
         {
             const idx = this._skipTurnNextRoundList.findIndex(p => p.id === nextPlayer.id);
             this._skipTurnNextRoundList.splice(idx, 1);
+            this._game.removeStaleRooms(nextPlayer);
             this.endTurn();
         }
     }

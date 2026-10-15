@@ -405,16 +405,30 @@ describe("Requiem Monsters ", () => {
 
     it("mushroom", async () => {
         const mob = game.obtainCard("r-mushroom") as MonsterCard;
+        game.entityHandler.addHealth(player1, 10, "other");
+        game.entityHandler.addHealth(player2, 10, "other");
         expect(mob).toBeInstanceOf(MonsterCard);
         
         game.encounters.forceSetMonsterAtSlot(0, mob);
         const ent = game.monsters[0]!;
-        game.entityHandler.dealDamage(ent, player1, {card: mob, visualEffectBox: undefined}, 1);
+        game.actions.declareAttack(player1);
+        game.actions.declareAttackOnEntity(player1, ent);
+        game.random = () => 0.01;
+        game.actions.attackRoll(player1);
+        await game.actions.resolveStack();
         await game.actions.resolveStack();
         await game.actions.resolveStack();
         await game.actions.resolveStack();
         expect(game.stack.isEmpty()).toBe(true);
         expect(player2.currentHealthPoints).toBe(player2.healthPoints-1);
+        game.actions.attackRoll(player1);
+        await game.actions.resolveStack();
+        await game.actions.resolveStack();
+        await game.actions.resolveStack();
+        await game.actions.resolveStack();
+        expect(game.stack.isEmpty()).toBe(true);
+        expect(player1.currentHealthPoints).toBe(player1.healthPoints-2);
+        expect(player2.currentHealthPoints).toBe(player2.healthPoints-2);
     });
 
     it("mothers_shadow 2", async () => {
@@ -473,7 +487,8 @@ describe("Requiem Monsters ", () => {
     it("hornfel", async () => {
         const mob = game.obtainCard("r-hornfel") as MonsterCard;
         expect(mob).toBeInstanceOf(MonsterCard);
-        
+        game.entityHandler.addHealth(player2, 10, "other");
+
         game.encounters.forceSetMonsterAtSlot(0, mob);
         const ent = game.monsters[0]!;
 
@@ -491,6 +506,54 @@ describe("Requiem Monsters ", () => {
         expect(ent.currentHealthPoints).toBe(ent.healthPoints);
         expect(player1.currentHealthPoints).toBe(player1.healthPoints);
         expect(player2.currentHealthPoints).toBe(player2.healthPoints-1);
+
+        game.random = () => 0.01;
+        game.actions.attackRoll(player1);
+        game.random = () => 0.991;
+        await game.actions.resolveStack();
+        await game.actions.resolveStack();
+        await game.actions.resolveStack();
+        await game.actions.resolveStack();
+        await game.actions.resolveStack();
+        expect(game.stack.isEmpty()).toBe(true);
+        expect(ent.currentHealthPoints).toBe(ent.healthPoints);
+        expect(player1.currentHealthPoints).toBe(player1.healthPoints);
+        expect(player2.currentHealthPoints).toBe(player2.healthPoints-2);
+
+    });
+
+    it("hornfel 2", async () => {
+        const mob = game.obtainCard("r-hornfel") as MonsterCard;
+        expect(mob).toBeInstanceOf(MonsterCard);
+        game.entityHandler.addHealth(player1, 10, "other");
+
+        game.encounters.forceSetMonsterAtSlot(0, mob);
+        const ent = game.monsters[0]!;
+
+        game.actions.declareAttack(player1);
+        game.actions.declareAttackOnEntity(player1, ent);
+        game.random = () => 0.01;
+        game.actions.attackRoll(player1);
+        await game.actions.resolveStack();
+        await game.actions.resolveStack();
+        await game.actions.resolveStack();
+        await game.actions.resolveStack();
+        await game.actions.resolveStack();
+        expect(game.stack.isEmpty()).toBe(true);
+        expect(ent.currentHealthPoints).toBe(ent.healthPoints);
+        expect(player1.currentHealthPoints).toBe(player1.healthPoints-1);
+        expect(player2.currentHealthPoints).toBe(player2.healthPoints);
+
+        game.actions.attackRoll(player1);
+        await game.actions.resolveStack();
+        await game.actions.resolveStack();
+        await game.actions.resolveStack();
+        await game.actions.resolveStack();
+        await game.actions.resolveStack();
+        expect(game.stack.isEmpty()).toBe(true);
+        expect(ent.currentHealthPoints).toBe(ent.healthPoints);
+        expect(player1.currentHealthPoints).toBe(player1.healthPoints-2);
+        expect(player2.currentHealthPoints).toBe(player2.healthPoints);
 
     });
 

@@ -13,7 +13,7 @@ interface DamageObj {
 
 export abstract class Entity {
   private _currentHealthPoints: number;
-  private _color: string = "#D92D18";
+  protected _color: string = "#D92D18";
   // Either attacking or being attacked.
     /** @private The evasion value from the monster card */
   private _evasion: number = 0;

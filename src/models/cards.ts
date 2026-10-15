@@ -96,17 +96,16 @@ class Card {
     }
 
     visualEffectBoxFromDescription(description: string): VisualEffectBox {
+        const processedDescription = description.toLowerCase().replaceAll("!", "").replaceAll("-", "");
         for(const effectRange of this._separatorIds) {
             for(const effect of effectRange) {
-                if(effect.description.toLowerCase().includes(description.toLowerCase())) {
+                if(effect.description.toLowerCase().replaceAll("!", "").replaceAll("-", "").includes(processedDescription)) {
                     return { startIndex: effect.startIndex, endIndex: effect.endIndex };
                 }
             }
         }
         // tmp
         return { startIndex:0, endIndex:0 };
-
-        // throw new GameError(`Effect description "${description}" not found for card ${this.name}`);
     }
     get counters(): CounterHandler {
         return this._counterHandler;
@@ -345,16 +344,21 @@ class Card {
         }
     }
 
-    onAddInPlay(issuerProvider: () => Entity): void {
+    onAddInPlay(issuerProvider: () => Entity, differentSource: Card | undefined = undefined): void {
         this._owner = issuerProvider();
-        this._effectInterface.subscribeAll(issuerProvider);
+        this._effectInterface.subscribeAll(issuerProvider, differentSource);
     }
     addEffect(effect: Effect | PassiveEffect): void {
         this._effectInterface.addEffect(effect);
     }
 
     getActiveEffect(): Effect | undefined {
-        return this._effectInterface.getActiveEffect();
+        try{
+            return this._effectInterface.getActiveEffect();
+        }
+        catch(err){
+            return undefined;
+        }
     }
 
     hasTapEffect(): boolean {
@@ -403,7 +407,8 @@ class Card {
         this._subtype = otherCard._subtype;
         this._effectOutcomes = otherCard._effectOutcomes;
         this._flipData = originalFlipData;
-        
+        if(this instanceof ItemCard)
+            this.parentCard = originalState.slug;
         // Create a new effect interface
         this._effectInterface = new EffectInterface(this);
         
@@ -428,6 +433,8 @@ class Card {
             this._flipData = originalState.flipData;
             this._tags.lastCopiedRestoreOriginalStateIndex = prevIdx; // Restore the previous index for potential nested copies
             this._tags.restore = undefined;
+            if(this instanceof ItemCard)
+                this.parentCard = null;
         };
          this._cleanup.push(restoreOriginalState);
         this._tags.lastCopiedRestoreOriginalStateIndex = this._cleanup.length - 1; // Store the index of the restore function in tags for potential external access
@@ -450,6 +457,9 @@ enum InplayType { CHARGED, UNCHARGED, PASSIVE, PAID, PLAYABLE }
 export class ItemCard extends Card {
   protected _inplayType: InplayType;
   protected _guppy: boolean = false;
+//   Card that copies other card create child cards. 
+// Parent can be set to unkown when it should not be destroyed by destruction of this card.
+  protected _parentCard: string | undefined | null = undefined; 
 
   protected _cost: string;
     constructor(id: number, globalId: number, json: InPlayCardType) {
@@ -464,6 +474,17 @@ export class ItemCard extends Card {
         this._inplayType = InplayType.PAID;
       }
     }
+  }
+
+/**
+ * @returns a the card that generated this card when it is copy of a card. Unknown when the parent is protected from destruction of the child.
+ */
+  get parentCard(): string | undefined | null{
+    return this._parentCard
+  }
+
+  set parentCard(parent: string | undefined | null){
+    this._parentCard = parent;
   }
 
   get inPlayType(): InplayType {
@@ -497,17 +518,18 @@ export class ItemCard extends Card {
   }
   async tryActivateEffect(
     targets: any[] = [],
-    effectId: number | "tap" = "tap"
+    effectId: number | "tap" = "tap",
+    differentSource: Card | undefined = undefined,
   ): Promise<EffectOnStack> {
     switch (effectId) {
       case "tap":
         if (this._charged === true) {
           this._charged = false;
-          return this._effectInterface.tapEffect(this.owner, targets);
+          return this._effectInterface.tapEffect(this.owner, targets, differentSource);
         }
         throw new GameError("Cannot activate uncharged item", toSerializedTranslation("error.cannotActivateUnchargedItem"));
       default:
-        return this._effectInterface.paidEffect(this.owner, targets, effectId);
+        return this._effectInterface.paidEffect(this.owner, targets, effectId, differentSource);
     }
   }
   targetStillValid(
@@ -516,6 +538,15 @@ export class ItemCard extends Card {
     targets: any[]
   ): boolean {
     return this._effectInterface.targetStillValid(player, effectId, targets);
+  }
+
+  override get jsonAPI(): IdentifierType {
+      {
+        return {
+            ...super.jsonAPI,
+            ...(typeof this.parentCard === "string" ? {parent: this.parentCard} : {}),
+        };
+      }
   }
 }
 // "discardNextTime" turns into "discard" after the first time the card is played.
@@ -960,6 +991,7 @@ class Deck<T extends Card> {
                 );
             }
         }
+        this._game.cardHandler.ensureEffectsAttached(card);
     }
 
     draw(): T {
@@ -1011,6 +1043,7 @@ class Deck<T extends Card> {
         // console.log(`Drawing card id ${id} from deck of type ${this._type} at position from top ${positionFromTop}.`);
         const result = this._set.get(id);
         this._order.splice(posFromEnd, 1);
+        this._game.cardHandler.ensureEffectsAttached(result);
         return result;
     }
 
@@ -1070,7 +1103,9 @@ class Deck<T extends Card> {
                 toSerializedTranslation("error.drawnDiscardCardIdUndefined", {type: this._type})
             );
         }
-        return this._set.get(id);
+        const result = this._set.get(id);
+        this._game.cardHandler.ensureEffectsAttached(result);
+        return result;
     }
 
     get discard(): T[] {

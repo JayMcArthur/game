@@ -102,6 +102,7 @@ describe("Discard", () => {
         await game.actions.resolveStack();
         await game.actions.resolveStack();
         game.cardHandler.addCardToHand(player2, ewaz);
+        game.entityHandler.addLootPlay(player2, 1);
         game.actions.playCard(player2, player2.hand.length - 1);
         await game.actions.resolveStack();
         expect(game.encounters.visible[0]!.slug).not.toBe("b2-moms_hand");

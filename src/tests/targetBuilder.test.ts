@@ -3,6 +3,8 @@ import { Game } from "../models/game";
 import { Player } from "../models/entities/player";
 import { CharacterCard, ItemCard, LootCard, MonsterCard } from "@/models/cards";
 import { TargetBuilder } from "@/models/targetBuilder";
+import { isChooseOneOptions, type ChooseOneOptions } from "@/models/targetSelector";
+import type { TargetsSelector } from "@/models/types/cardTypes";
 import {
   dischargeEachItemsAndRemoveCoins,
   emptyHands,
@@ -611,6 +613,101 @@ describe("Target Builder - validTargetExists", () => {
   });
 
   describe("Choose-One Selectors", () => {
+    it("should backtrack to the next randomized choose-one option after a dead end", () => {
+      const item = game.obtainCard("b2-chaos_card") as ItemCard;
+      game.cardHandler.addInPlay(player1, item);
+
+      const [deadEndBranch, validBranch] = item.getEffectRange(0)!;
+      const originalSelector = item.getEffectTarget("tap")[0]!;
+      const branchSelector = (hasTargets: boolean): TargetsSelector => ({
+        description: originalSelector.description,
+        selector: () => hasTargets ? ["valid-target"] : [],
+        min: 1,
+        max: 1,
+      });
+      const chooseOneSelector: TargetsSelector = {
+        description: originalSelector.description,
+        selector: () => [
+          {
+            description: deadEndBranch!.description.toLowerCase().replaceAll("!", ""),
+            card: item,
+            visualEffectBox: deadEndBranch!,
+            admissibleTargets: [branchSelector(false)],
+          },
+          {
+            description: validBranch!.description.toLowerCase().replaceAll("!", ""),
+            card: item,
+            visualEffectBox: validBranch!,
+            admissibleTargets: [branchSelector(true)],
+          },
+        ],
+        min: 1,
+        max: 1,
+      };
+      item.getEffectTarget = () => [chooseOneSelector];
+      item.targetStillValid = () => true;
+
+      const originalRandom = Math.random;
+      Math.random = () => 0.99;
+      try {
+        const result = TargetBuilder.buildRandomValidTargets(game, player1, item, "inPlay");
+
+        expect(typeof result).not.toBe("string");
+        if (typeof result !== "string") {
+          expect(result.targets).toEqual([
+            validBranch!.description.toLowerCase().replaceAll("!", ""),
+            "valid-target",
+          ]);
+        }
+      } finally {
+        Math.random = originalRandom;
+      }
+    });
+
+    it("should validate only the choose-one branch identified by visualEffectId", () => {
+      const item = game.obtainCard("b2-chaos_card") as ItemCard;
+      game.cardHandler.addInPlay(player1, item);
+
+      const firstBranch = item.getEffectRange(0)[0]!;
+      const secondBranch = item.getEffectRange(0)[1]!;
+      const originalSelector = item.getEffectTarget("tap")[0]!;
+      const makeBranchSelector = (hasTargets: boolean): TargetsSelector => ({
+        description: originalSelector.description,
+        selector: () => hasTargets ? ["valid-target"] : [],
+        min: 1,
+        max: 1,
+      });
+      const options: ChooseOneOptions[] = [
+        {
+          description: firstBranch.description.toLowerCase().replaceAll("!", ""),
+          card: item,
+          visualEffectBox: firstBranch,
+          admissibleTargets: [makeBranchSelector(true)],
+        },
+        {
+          description: secondBranch.description.toLowerCase().replaceAll("!", ""),
+          card: item,
+          visualEffectBox: secondBranch,
+          admissibleTargets: [makeBranchSelector(false)],
+        },
+      ];
+      const chooseOneSelector: TargetsSelector = {
+        description: originalSelector.description,
+        selector: () => options.filter(isChooseOneOptions),
+        min: 1,
+        max: 1,
+      };
+      item.getEffectTarget = () => [chooseOneSelector];
+
+      expect(TargetBuilder.validTargetExists(game, player1, item, "tap")).toBe(true);
+      expect(
+        TargetBuilder.validTargetExists(game, player1, item, "tap", secondBranch.startIndex),
+      ).toMatchObject({ key: "capability.noValidTargets" });
+      expect(
+        TargetBuilder.validTargetExists(game, player1, item, "tap", firstBranch.startIndex),
+      ).toBe(true);
+    });
+
     it("should return true when at least one choose-one option has valid targets", () => {
       // Chaos Card: "Choose one: Kill a player or monster; OR Destroy an item or soul you control"
       const chaosCard = game.obtainCard("b2-chaos_card") as ItemCard;

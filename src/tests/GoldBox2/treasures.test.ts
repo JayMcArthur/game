@@ -5,6 +5,7 @@ import { beforeEach, describe, expect, it } from "bun:test";
 import { Player } from "../../models/entities/player";
 import { setupTestGame } from "../testHelpers";
 import { DamageOnStack, AttackRollData, DiceRoll } from "../../models/stackElement";
+import { TargetBuilder } from "@/models/targetBuilder";
 
 describe("Gold Box 2 Treasures", () => {
     let game: Game;

@@ -167,6 +167,7 @@ export class UseItemAction extends Action {
     isFeasible(game: Game): boolean {
         const me = this.me;
         if (!me.canIActivateThisTurn) return false;
+        if(!this._item.activeEffectList.some(e => TargetBuilder.validTargetExists(game, me, this._item, e.index, e.visualEffectBox.startIndex) === true)) return false;
         return game.actions.canActivate(this._item, me) === true;
     }
 }
@@ -186,6 +187,8 @@ export class CancelPurchaseAction extends Action {
 export class Bot {
     private _game: Game;
     private _me: Player;
+    private _maxNbActivationsPerTurn: number = 100; // To avoid long loops.
+    public _useItemThisTurnCount: number = 0;
 
     constructor(game: Game, me: Player) {
         this._game = game;
@@ -220,7 +223,9 @@ export class Bot {
         const all = this.allActions;
         shuffle(this._game.random, all);
         for(const action of all) {
-            if(action.isFeasible(this.game)) {
+            if(action.isFeasible(this.game) && (action.type !== ActionType.USE_ITEM || this._useItemThisTurnCount < this._maxNbActivationsPerTurn)) {
+                if(action.type === ActionType.USE_ITEM)
+                    this._useItemThisTurnCount++;
                 return action;
             }
         }

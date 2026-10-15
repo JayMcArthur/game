@@ -140,7 +140,7 @@ export class DiceRoll extends StackElement {
   private _effectIssuer: Entity | null = null;
   private _attackRoll: boolean;
   private _fizzled: boolean = false;
-  private _effect: EffectFunction[] | null = null;
+  private _effect: EffectFunction[] | EffectFunction | null = null;
   private _card: Card | null = null;
   private _visualEffectBox: VisualEffectBox | null = null;
   private _targets: any[] = [];
@@ -250,8 +250,8 @@ export class DiceRoll extends StackElement {
   set value(v: number) {
     const prev = this._value;
     this._value = Math.max(1, Math.min(6, v));
-    if (prev !== this._value)
-      this.readyToResolve = false;
+    // if (prev !== this._value)
+    this.readyToResolve = false;
   }
   get card(): Card | null {
     return this._card;
@@ -294,11 +294,13 @@ export class DiceRoll extends StackElement {
    * provide the visual effect box associated with this dice roll.
    */
   private obtainVisualBox(): VisualEffectBox | undefined {
-    if(!this._effect || this._effect.length !== 6)
-      return undefined;
     if(!this.card)
       return undefined;
     if(!this._visualEffectBox)
+      return undefined;
+    if(this._effect instanceof Array === false && this._effect !== null)
+      return this._visualEffectBox;
+    if(!this._effect || this._effect.length !== 6)
       return undefined;
     if(this._effect[this.value - 1]!.name === "trueEffect")
       return undefined;
@@ -328,8 +330,8 @@ export class DiceRoll extends StackElement {
   _TEST_setRandom(random: () => number): void {
     this._random = random;
   }
-  attachEffect(effect: EffectFunction[], card: Card, targets: any[]=[], effectIssuer: Entity | null = null): void {
-    if(effect.length != 6)
+  attachEffect(effect: EffectFunction[] | EffectFunction, card: Card, targets: any[]=[], effectIssuer: Entity | null = null): void {
+    if(effect instanceof Array && effect.length != 6)
       throw new GameError("Effect must have 6 outcomes, one for each dice face.", toSerializedTranslation("error.behaviorError", { error: "Effect must have 6 outcomes, one for each dice face." }));
     this._effect = effect;
     this._card = card;
@@ -344,11 +346,12 @@ export class DiceRoll extends StackElement {
         return; // No effect if attacker or target is dead
       }
     this.value += (this._attackRoll ? this._issuer.attackDiceModifier : 0) + this._issuer.diceModifier;
-    if (this._effect?.length === 6) {
+    if ((this._effect instanceof Array && this._effect.length === 6) || this._effect instanceof Function) {
       const effectIssuer = this._effectIssuer ?? this._issuer;
       // For attack rolls, prepend the dice roll itself to targets so effects can use it as the damage source
       const targetsWithDiceRoll = this._attackRoll ? [this, ...this._targets] : this._targets;
-      await this._effect[this._value - 1]!(new EffectData(this._card!, () => effectIssuer, targetsWithDiceRoll));
+      const effect = this._effect instanceof Array ? this._effect[this._value - 1]! : this._effect;
+      await effect(new EffectData(this._card!, () => effectIssuer, targetsWithDiceRoll));
     }
   }
 }
@@ -475,8 +478,14 @@ export class LootStepOnStack extends StackElement {
     return `LootStep: ${this.player.id} loots ${this.nbLoots} card(s)`;
   }
   override async onResolve(): Promise<void> {
-    this.game.lootStep(this.player, this.nbLoots);
-    return new Promise(resolve => setTimeout(resolve, 0));
+    const ids = this.game.stack.currentStackIds;
+    this.game.emit("on:loot:step", { eventIssuer: this.player, lootStep: this });
+    await this.game.executeWhenStackSubset(ids, async () => {
+      this.game.stack.resolve();
+      this.game.addToHistory(this.json);
+      this.game.lootStep(this.player, this.nbLoots);
+      await this.game.resolveCallbacks();
+    });
   }
   get nbLoots(){
     return this._nbLoots;
@@ -513,6 +522,8 @@ export class EndOfTurnOnStack extends StackElement {
     return `EndOfTurn: ${this.player.id} ends their turn`;
   }
   override async onResolve(): Promise<void> {
+    await this.game.handleRoomChange();
+    await this.game.resolveCallbacks();
   }
 }
 
@@ -624,6 +635,7 @@ export class EffectOnStack extends StackElement {
     }
 
     override get debugLogs(): string {
-        return `card effect ${this.data.it.name} ${this.data.it.globalId} ISSUER ${this._data.issuer.id} EFFECT "${this._description}" TARGETS: ${JSON.stringify(TargetBuilder.convertToSelectionItems(this._data.targets))}`;
+        return `card effect ${this.data.it.name} ${this.data.it.globalId} ISSUER ${this._data.issuer.id} EFFECT "${this._description}" `;
+        // TARGETS: ${JSON.stringify(TargetBuilder.convertToSelectionItems(this._data.targets))}
     }
 }

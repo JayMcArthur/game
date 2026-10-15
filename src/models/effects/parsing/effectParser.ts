@@ -855,9 +855,9 @@ function parseStandardASyncEffect(s: string, game: Game, nr: NumberRobustString,
         case "each non-active player discards a loot card":
             return noTargetEffect(active.eachNonActivePlayerDiscardsLootEffect(game));
         case "each other player may choose to loot x. each player that does gives you a loot card":
-            return noTargetEffect(active.eachOtherPlayerLootsAndYouLootEffect(game, nr.nextNumber()));
+            return noTargetEffect(active.eachOtherPlayerLootsGivesYouOneEffect(game, nr.nextNumber()));
         case "look at the top x cards of the room or monster deck. you may put one of those in a slot and the rest back. this can't be activated during an attack":
-            return { effectFunction: active.lookAtTop3Put1InSlotEffect(game, nr.nextNumber()), targetSelectors: selectDeck(game, 1, 1, (name) => ["room", "monster"].includes(name)) };
+            return { effectFunction: active.lookAtTopXPut1InSlotEffect(game, nr.nextNumber()), targetSelectors: selectDeck(game, 1, 1, (name) => ["room", "monster"].includes(name)) };
         case "put a non-event monster card in discard in a monster slot not being attacked":
             return { effectFunction: active.putMonstersFromDiscardIntoSlotsEffect(game, 1), targetSelectors: selectXCardsFromDiscard(game, "monster", 1, 1, (card) => card instanceof MonsterCard && !card.isEvent) };
         case "choose a shop item. this gains the abilities of that item till end of turn":
@@ -1682,7 +1682,8 @@ function parseStandardSyncEffect(s: string, game: Game, nr: NumberRobustString, 
             return noTargetSyncEffect(monster.putInMonsterDeckNFromTopEffect(game, nr.nextNumber()));
         case "each time this deals combat damage to the attacking player, it deals x damage to each other player":
             return noTargetSyncEffect(passive.onAnyEventEffect("on:damage:taken", [active.dealDamageToEachPlayerEffect(game, nr.nextNumber(), false)], game, s, 
-            (ef:EffectData, ev:OnDamageTakenData) => { return ef.issuer === ev.target && ev.eventIssuer === game.currentPlayer;}));
+            (ef:EffectData, ev:OnDamageTakenData) => { 
+                return ef.issuer === ev.target && ev.eventIssuer === game.currentPlayer && ev.source instanceof DiceRoll;}, false));
         case "when this dies, it deals x damage to the player who killed it":
             return noTargetSyncEffect(monster.dealDamageToKillerOnDeathEffect(game, nr.nextNumber()));
         case "put it in the monster deck x cards from the top":

@@ -395,6 +395,24 @@ fsp2-boss_rush - Reveal cards from the top of the monster deck till you reveal 2
         expect(player1.canAttackThisEntity(game.monsters[0]!)).toBe(true);
         expect(player1.canAttackThisEntity(game.monsters[1]!)).not.toBe(true);
     });
+
+    it("fsp2-krampus - The active player must attack this once each turn if able. + holly mulligan", async () => {
+
+        const card = game.obtainCard("fsp2-holy_mulligan") as MonsterCard;
+        game.encounters.forceSetMonsterAtSlot(0, card);
+        const card1 = game.obtainCard("fsp2-krampus") as MonsterCard;
+        game.decks.monster.addTopPosition(card1);
+        game.actions.declareAttack(player1);
+        game.actions.declareAttackOnEntity(player1, game.monsters[0]!);
+        game.random = () => 6/6-.00001;
+        await game.actions.attackRoll(player1);
+        await game.actions.resolveStack(); // roll
+        await game.actions.resolveStack(); // damage
+        await game.actions.resolveStack(); // effect
+        await game.actions.resolveStack(); // effect
+        expect(game.stack.isEmpty()).toBe(true);
+        expect(game.actions.canEndTurn(player1, false)).not.toBe(true);
+    });
     it("fsp2-holy_chest - Roll- 6: This becomes a soul. Gain it.", async () => {
        const card1 = game.obtainCard("fsp2-holy_chest") as MonsterCard;
         game.decks.monster.addTopPosition(card1);

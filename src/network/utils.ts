@@ -12,6 +12,7 @@ import type {
   Room as RoomPayload,
   RoomBroadcast,
   SerializedTranslation,
+  GameOverBroadcast,
 } from "@/shared/api";
 import { MAX_PLAYER_COUNT, roomManager } from "./roomManager";
 import { getAdminMessages, getHourlyGameStats } from "@/utils/db";
@@ -165,6 +166,21 @@ export const sendRoomBroadcast = (
     });
   }
 };
+export const sendEndGameBroadcast = (
+  room: Room,
+  broadcast: GameOverBroadcast,
+): void => {
+  for (const user of room.users) {
+    for (const instance of user.instances) {
+      if (!instance.isActive) continue;
+       user.socket.emit("on:room:gameover", broadcast);
+    }
+  }
+  for (const spectator of room.spectators) {
+    spectator.socket.emit("on:room:gameover", broadcast);
+  }
+};
+
 
 export const attachGameEventListeners = (room: Room): void => {
   if (!room.game) return;
@@ -175,6 +191,10 @@ export const attachGameEventListeners = (room: Room): void => {
 
   room.game.onRoomBroadcast.add((broadcast) => {
     sendRoomBroadcast(room, broadcast);
+  });
+
+  room.game.onEndReached.add((broadcast) => {
+    sendEndGameBroadcast(room, broadcast);
   });
 };
 
@@ -208,7 +228,7 @@ const generateRoomChangedPayload = (
     players: room.users
       .map((user) =>
         user.instances.flatMap((instance) => ({
-          isMe: instance.id === recipient.id,
+          isMe: user.instances.some((i) => i.id === recipient.id),
           isHost: user.isHost,
           isCopy: instance.isCopy,
           name: instance.name,

@@ -1119,13 +1119,16 @@ export function bossRushEffect(game: Game, bossCount: number): AsyncEffectFuncti
             return false;
         data.it.afterEffect = "handled"; 
         // draw the specified number of boss cards 
-        while(bosses.length < bossCount && game.decks.monster.cards.length > 0) {
+        const nbMonsterCards = game.decks.monster.discard.length + game.decks.monster.cards.length;
+        for(let i = 0; i < nbMonsterCards; i++) {
             const card = game.decks.monster.draw();
-            if(card instanceof MonsterCard && card.subtype === "boss") {
+            if(card instanceof MonsterCard && (card.subtype === "boss" )) {
                 bosses.push(card);
             } else {
                 game.cardHandler.discard(card);
             }
+            if(bosses.length == bossCount)
+                break;
         }
         for(const card of bosses)
             game.cardHandler.addTopPosition("monster", card);

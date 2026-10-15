@@ -147,6 +147,7 @@ it("g2-credit_card", async () => {
         game.actions.declarePurchase(player1);
         expect(()=>game.actions.purchase(player1, "top")).toThrow();
         game.actions.purchase(player1, 0);
+        game.stack.cancel();
         game.entityHandler.addPurchaseThisTurn(player1, 1, "other");
         game.actions.declarePurchase(player1);
         expect(()=>game.actions.purchase(player1, "top")).toThrow();

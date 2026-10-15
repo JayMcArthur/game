@@ -10,11 +10,13 @@ import { toSerializedTranslation } from "@/utils/translation";
 export class Rooms extends Slots<RoomCard> {
     /** @private Reference to the game instance */
     _game: Game; // Game type
-
+    /** Tracks, per slot, the current top card's identity and which players have completed a turn since it last changed. */
+    private _stability: { cardId: number | undefined; playersSinceChange: Set<string> }[];
 
     constructor(nbRooms: number, deck: Deck<RoomCard>, game: Game) {
         super(nbRooms, deck);
         this._game = game;
+        this._stability = new Array(nbRooms).fill(null).map(() => ({ cardId: undefined, playersSinceChange: new Set<string>() }));
         this.fillEmptySpots();
     }
 
@@ -31,6 +33,32 @@ export class Rooms extends Slots<RoomCard> {
                 toSerializedTranslation("error.behaviorError", {error: `Cannot draw card from deck for slot ${position}.`}));
         this._slots[position]!.push(card);
         card.onAddInPlay(() => this._game.currentPlayer);
+        this._stability[position] = { cardId: card.globalId, playersSinceChange: new Set() };
+    }
+
+    /**
+     * Called once at the end of each player's turn. For each room whose top card is unchanged
+     * since the last call, records that this player has had a turn with it in place.
+     * @returns Rooms whose top card has now remained unchanged through a whole round (every player had a turn).
+     */
+    registerTurnEndForStability(playerId: string | undefined, totalPlayers: number): RoomCard[] {
+        const staleRooms: RoomCard[] = [];
+        for (let i = 0; i < this._slots.length; i++) {
+            const top = this.roomIn(i);
+            if (top === undefined) continue;
+            const tracking = this._stability[i]!;
+            if (tracking.cardId !== top.globalId) {
+                tracking.cardId = top.globalId;
+                tracking.playersSinceChange = new Set();
+            }
+            if (playerId !== undefined) {
+                tracking.playersSinceChange.add(playerId);
+            }
+            if (tracking.playersSinceChange.size >= totalPlayers) {
+                staleRooms.push(top);
+            }
+        }
+        return staleRooms;
     }
 
     get activeRooms(): RoomCard[] {
@@ -53,6 +81,7 @@ export class Rooms extends Slots<RoomCard> {
         if (this._slots[index]!.length === 0) {
             this.fillEmptySpots();
         }
+        this._stability[index] = { cardId: this.roomIn(index)?.globalId, playersSinceChange: new Set() };
         return card;
     }
 
@@ -70,6 +99,9 @@ export class Rooms extends Slots<RoomCard> {
         this._slots[i]!.splice(j, 1);
         card.cleanup();
         this.fillEmptySpots();
+        if( this._slots[i]!.length - 1 === j) {
+            this._stability[i] = { cardId: this.roomIn(i)?.globalId, playersSinceChange: new Set() };
+        }
         return card;
     }
 

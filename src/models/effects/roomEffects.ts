@@ -159,11 +159,17 @@ export function cheaperShopItemsEffect(game: Game, discount: number): SyncEffect
     return (data: EffectData) => {
         let offTurnStart: (() => void) | null = null;
         let offEndTurn: (() => void) | null = null;
+        game.currentPlayer.priceModifier -= discount;
+        let active: boolean = true;
         offTurnStart = game.emitter.on("on:turn:start", (eventData) => {
+            if(active) return;
+            active = true;
             game.currentPlayer.priceModifier -= discount;
         });
 
-        offEndTurn = game.emitter.on("on:turn:end", (eventData) => {
+        offEndTurn = game.emitter.on("till:turn:end", (eventData) => {
+            if(!active) return;
+            active = false;
             game.currentPlayer.priceModifier += discount;
         });
 
@@ -174,6 +180,7 @@ export function cheaperShopItemsEffect(game: Game, discount: number): SyncEffect
             offEndTurn?.();
             offEndTurn = null;
             game.currentPlayer.priceModifier += discount;
+            active = false;
 
         });
         return true;
@@ -642,9 +649,15 @@ export function makeAnAttackRollAfterEachAttackRollEffect(game: Game): SyncEffec
         let offCombatEnd: (() => void) | null = null;
         // console.log("Registering makeAnAttackRollAfterEachAttackRollEffect for", data.it.name, " current player:", game.currentPlayer.id, " issuer:", data.issuer.id);
         offAttackRolled = game.emitter.on("on:attack:roll", (eventData) => {
+            if(eventData.eventIssuer.isEngagedInCombat === false || eventData.eventIssuer.isDead) {
+                return; // Not the current player, ignore
+            }
             const target = eventData.dice.attackTarget;
             if(eventData.eventIssuer !== game.currentPlayer) {
                 return; // Not the current player, ignore
+            }
+            if(target.isEngagedInCombat === false || target.isDead) {
+                return; // Target is not engaged in combat or is dead, ignore
             }
             if(data.issuer === game.currentPlayer)
                 throw new GameError("Expected issuer to not be the active player for makeAnAttackRollAfterEachAttackRollEffect.",
@@ -903,7 +916,7 @@ export function playersWithFewestSoulsAttackBoostEffect(game: Game, attackBoost:
 
 export function playersWithFewestSoulsShopItemPriceReductionEffect(
     game: Game,
-    priceReduction: number,
+    finalPrice: number,
 ): SyncEffectFunction {
     return (data: EffectData) => {
         let offTurnStart: (() => void) | null = null;
@@ -913,8 +926,9 @@ export function playersWithFewestSoulsShopItemPriceReductionEffect(
         let offSoulRemoved: (() => void) | null = null;
 
         let canUseFreePurchase = true;
-        let effectApplied = false;
+        // let effectApplied = false;
         let appliedReduction = 0;
+        let playerItIsAppliedTo: Player | null = null;
 
         function currentPlayerHasFewestSouls(): boolean {
             const minSouls = Math.min(
@@ -925,13 +939,14 @@ export function playersWithFewestSoulsShopItemPriceReductionEffect(
         }
 
         function removeEffect(): void {
-            if (!effectApplied) {
+            if (!playerItIsAppliedTo) {
                 return;
             }
+            
+            playerItIsAppliedTo.priceModifier += appliedReduction;
 
-            game.currentPlayer.priceModifier += appliedReduction;
-
-            effectApplied = false;
+            playerItIsAppliedTo = null;
+            // effectApplied = false;
             appliedReduction = 0;
         }
 
@@ -939,13 +954,13 @@ export function playersWithFewestSoulsShopItemPriceReductionEffect(
             // Idempotent: safe after turn-start, soul-gain, or initialization.
             removeEffect();
 
-            if (!canUseFreePurchase || !currentPlayerHasFewestSouls()) {
+            if (!canUseFreePurchase || playerItIsAppliedTo !== null || !currentPlayerHasFewestSouls()) {
                 return;
             }
-            appliedReduction = game.shop.shopPrice;
+            appliedReduction = game.shop.shopPrice - finalPrice;
 
-            game.currentPlayer.priceModifier -= appliedReduction;
-            effectApplied = true;
+            playerItIsAppliedTo = game.currentPlayer;
+            playerItIsAppliedTo.priceModifier -= appliedReduction;
         }
 
         offPurchase = game.emitter.on("on:purchase:success", eventData => {
@@ -956,7 +971,7 @@ export function playersWithFewestSoulsShopItemPriceReductionEffect(
             if (
                 eventIssuer === game.currentPlayer &&
                 isShopItemPurchase &&
-                effectApplied
+                playerItIsAppliedTo !== null
             ) {
                 // Consume the effect before later events can reapply it.
                 canUseFreePurchase = false;

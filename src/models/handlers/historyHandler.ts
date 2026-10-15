@@ -100,6 +100,8 @@ function isGameAction(entry: HistoricEntry): boolean {
     "DebugListMonsterDeck",
     "DebugListCardsICanRemove",
     "DebugListTreasure",
+    "DebugListDices",
+    "debugListRooms",
     "ReportBug",
     "IsGameOngoing",
     "CreateRoom",
@@ -196,6 +198,13 @@ export class HistoricHandler {
   get lastEntry(): HistoricEntry | null {
     if (this._history.length === 0) return null;
     return this._history[this._history.length - 1]!;
+  }
+
+  /** Drops a trailing "randomSeed" entry, e.g. one left over from a replay reseed. */
+  removeTrailingRandomSeed(): void {
+    if (this._history.at(-1)?.type === "randomSeed") {
+      this._history.pop();
+    }
   }
 
   get history(): StackElementJson[] {

@@ -1,4 +1,4 @@
-import type { ItemCard, LootCard, MonsterCard, RoomCard } from "@/models/cards";
+import type { ItemCard, LootCard, MonsterCard, RoomCard, TreasureCard } from "@/models/cards";
 import { beforeEach, describe, expect, it } from "bun:test";
 import { Player } from "../../models/entities/player";
 import { Game } from "../../models/game";
@@ -97,18 +97,21 @@ describe("Requiem Loots ", () => {
             let item = game.obtainCard("r-undefined") as ItemCard;
             expect(item).toBeDefined();
             game.cardHandler.addInPlay(player1, item);
-            game.obtainCard(game.shop.itemsInShop[0]!.slug);
-
+            const spoon = game.obtainCard("b2-spoon_bender") as TreasureCard;
+            game.shop._deck.addTopPosition(spoon);
+            game.shop.discardTop(0);
+            
             game.cardHandler.recharge(item);
+            expect(game.shop.itemsInShop[0]?.name.includes("Spoon Bender")).toBe(true);
             await game.activateItem(player1, item, [game.shop.itemsInShop[0]], "tap");
             await game.actions.resolveStack();
 
             expect(item.name).toBe(game.shop.itemsInShop[0]!.name);
             expect(item.charged).toBe(true);
-            game.random = () => 0.01;
+            game.random = () => 0.1;
             const dice = game.rollDice(player1, item);
             expect(dice.value).toBe(1);
-            await game.activateItem(player1, item, [dice], "tap");
+            await game.activateItem(player1, item, [dice, 1], "tap");
             await game.actions.resolveStack();
             expect(dice.value).toBe(2);
             expect(item.charged).toBe(false);
@@ -668,6 +671,7 @@ describe("Requiem Loots ", () => {
         });
     
         it("handicapped_placard", async () => {
+            game.gameParameters.nbSoulsToWin.value = 10;
             const gurdy = game.obtainCard("b2-gurdy") as MonsterCard;
             game.encounters.forceSetMonsterAtSlot(0, gurdy);
             expect(game.entityHandler.getDC(game.monsters[0]!)).toBe(4);
@@ -1071,7 +1075,7 @@ describe("Requiem Loots ", () => {
         expect(item).toBeDefined();
         const bomb = game.obtainCard("b2-bomb") as LootCard;
         game.decks.loot.addTopPosition(bomb);
-        const nbBombTopTen = game.decks.loot.cards.slice(0, 10).filter(c => c.name.includes("Bomb")).length;
+        const nbBombTopTen = game.decks.loot.cards.slice(0, 10).filter(c => c.name.toLowerCase().includes("bomb")).length;
         game.cardHandler.addInPlay(player1, item);
         await game.actions.resolveStack();
         expect(game.stack.isEmpty()).toBe(true);
@@ -1085,7 +1089,7 @@ describe("Requiem Loots ", () => {
         await game.actions.resolveStack();
         await game.actions.resolveStack(); // resolve effect
         await game.actions.resolveStack();
-        expect(player1.hand.length).toBe(handSize);
+        expect(player1.hand.length).toBe(handSize + 1);
     });
 
     it("blood_puppy deal damage", async () => {

@@ -112,11 +112,7 @@ export class Encounters extends Slots<MonsterCard> {
             const indexInSlot = this._slots[i]!.findIndex(card => card.slug === slug && (globalId === undefined || card.globalId === globalId)
             );
             if (indexInSlot >= 0) {
-
-                const card = this._slots[i]![indexInSlot];
-                this._slots[i]!.splice(indexInSlot, 1);
-                this.fillEmptySpots(false);
-                return card;
+                return this.removeAtIndices(i, indexInSlot);
             }
         }
         const card = globalId === undefined
@@ -293,7 +289,7 @@ export class Encounters extends Slots<MonsterCard> {
     }
 
     canFlushIndex(index: number): boolean {
-        return this.monsterIn(index) !== undefined && this.monsterIn(index)!.isEngagedInCombat !== true;
+        return this.monsterIn(index) !== undefined && this.monsterIn(index)!.isEngagedInCombat !== true && this.monsterIn(index)!.isDead !== true;
     }
 
     /**
@@ -395,9 +391,10 @@ export class Encounters extends Slots<MonsterCard> {
      * @param monster - The Monster entity to kill
      */
     kill(monster: Monster): void {
-        const index = this._monstersInPlay.indexOf(monster);
+        const slotIndex = this._monstersInPlay.indexOf(monster);
+        const index = this._slots[slotIndex]?.indexOf(monster.card) ?? -1;
         if (index >= 0) {
-            this.killTop(index);
+            this.killTop(slotIndex);
         } else {
             this.removeCard(monster.card);
         }

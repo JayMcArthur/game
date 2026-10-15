@@ -30,7 +30,7 @@ for(let i = 0; i < 1000; i++){
                         randomSeed: seed,
                         rooms: "random",
                         bonusSouls: "random",
-                        forbiddenCards: ["r-golden_trinket", "r-gnawed_leaf", "b2-portable_slot_machine", "b2-battery_bum", "r-keepers_sack", "r-car_battery", "b2-shiny_rock", "b2-placebo", "fsp2-cursed_globin", "r-eternal_d6", "fsp2-red_candle"]
+                        forbiddenCards: ["r-gnawed_leaf", "b2-portable_slot_machine", "b2-battery_bum", "r-keepers_sack", "r-car_battery", "b2-shiny_rock", "b2-placebo", "fsp2-cursed_globin", "r-eternal_d6", "fsp2-red_candle"]
                     });
             console.log(`${gameId++} Random seed for this test: \"${seed}\"`);
             game = setup.game;
@@ -44,11 +44,13 @@ for(let i = 0; i < 1000; i++){
             if(verbose)
                 console.log(...args);
         }
+        // throw new Error("This test is currently disabled as it can be very flaky and doesn't provide consistent value. It can be re-enabled for specific seeds that are known to cause issues, or after improving the bot's decision making to reduce the chances of it getting stuck in loops or bad states.");
         Math.random = game.random; // Override Math.random to make the test deterministic and reproducible
         const bot1 = new Bot(game, player1);
         const bot2 = new Bot(game, player2);
-        let remainingActions = 10000;
         let currentRound = 0;
+        let seen = false;
+        // console.log(game.getCardByGlobalId(282)!.name);
         while(game.turnHandler.round < 50 && game.turnHandler.numberOfRoundSinceBeginning < 500 && !shouldStop) {
             uniqueIdCounter++;
             if(uniqueIdCounter > Math.min(100000, 100000))
@@ -58,7 +60,7 @@ for(let i = 0; i < 1000; i++){
             }
             // await game.resolveEntireStack();
             // const bot = game.currentPlayer === player1 ? bot1 : bot2;
-            const bot = Math.random() < 0.8 ? 
+            const bot = Math.random() < 0.98 ? 
                 game.currentPlayer === player1 
                     ? bot1 
                     : bot2
@@ -110,7 +112,17 @@ for(let i = 0; i < 1000; i++){
             // printVerbose("compute playable actions... ");
             // const actions = bot.playableActions;
             // let action = actions[Math.floor(Math.random() * actions.length)]!;
-            let action = bot.randomFeasibleAction;
+            let action;
+            try{
+                action = bot.randomFeasibleAction;
+            } catch(err){
+                if((err as Error).message.includes("Game is over."))
+                {
+                    shouldStop = true;
+                    continue;
+                }
+                throw err;
+            }
             // printVerbose("Done.", actions.map(a => a.type + (a instanceof UseItemAction ? ` (${a.item.name})` : "")).join(", "));
             // if(bot.me.inPlay.length < 2)
             //     throw new Error(`Player ${bot.me.id} has less than 2 items in play, which should not happen as the starting item is eternal. This may indicate a bug in item removal or state updates between turns.`);
@@ -123,6 +135,7 @@ for(let i = 0; i < 1000; i++){
             if(action === null && bot.me !== game.currentPlayer)
                 continue;
             if(action === null) {
+                // displayPlentyOfInfo(bot);
                 throw new Error(`Seed: ${game.seed}, Player ${bot.me.id} has no playable actions at round ${game.turnHandler.round}. This should not happen.`);
             }
             // if(!seen && game.monsters.some(m => m.card.slug === "b2-cod_worm"))
@@ -209,6 +222,7 @@ for(let i = 0; i < 1000; i++){
                     // printVerbose(`in Play: ${bot.me.inPlay.map(i => i.name).join(", ")}`);
                     // if(game.stack.peek()?.json.type === "LootCardEffect")
                         printVerbose(`    Try ${bot.me.id} executed action: resolve_stack to resolve ${game.stack.peek()?.debugLogs}, coins :${bot.me.coins},stack size: ${game.stack.elements.length}`);
+                        // printVerbose(bot.me.inPlay.map(c=>c!.name))
                     // if(game.stack.peek()?.json.card?.slug === "b2-steamy_sale" && game.stack.peek()?.json.effect === "Steal 1¢ from another player when they gain coins.")
                     //     throw new Error("Stack contains Tech X steal effect, which can cause infinite loops if the bot keeps trying to resolve it while there are no coins to steal. This should be investigated if it happens consistently with the same seed.");
                     if(game.stack.size > 10000) {
@@ -245,6 +259,7 @@ for(let i = 0; i < 1000; i++){
                     "Cannot purchase from shop slot 2, it is empty. The deck has 0 cards left.",
                     "Cannot draw card at position 0 from top even after resetting discard, deck of type treasure has only 0 cards.",
                     "Cannot draw card at position 0 from top even after resetting discard, deck of type loot has only 0 cards.",
+                    "Game is over. You must leave.",
                     ].includes((execErr as Error).message) || (execErr as Error).message.includes("The deck has 0 cards left.") || (execErr as Error).message.includes("has only 0 cards."))
                     {
                         console.log(`  ✗ ${action.type} failed due to empty deck.`);

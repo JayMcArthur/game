@@ -69,8 +69,18 @@ export interface ChooseOneOptions {
     admissibleTargets: TargetsSelector[];
 }
 
+export interface CardEffectOptions {
+    index: number;
+    card: Card;
+    visualEffectBox: VisualEffectBox;
+}
+
 export const isChooseOneOptions = (x: any): x is ChooseOneOptions => {
     return typeof x === 'object' && x !== null && 'description' in x && 'admissibleTargets' in x && 'visualEffectBox' in x && "card" in x;
+};
+
+export const isCardEffectOptions = (x: any): x is CardEffectOptions => {
+    return typeof x === 'object' && x !== null && 'index' in x && 'card' in x && 'visualEffectBox' in x && "card" in x;
 };
 
 export function deckSelector(filter: (name: string) => boolean = () => true, game: Game): (issuer: Player) => any[] {

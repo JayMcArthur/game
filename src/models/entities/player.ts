@@ -6,7 +6,7 @@ import { Game } from "../game";
 import { GameError } from "@/models/GameError";
 import { DiceRoll } from "../stackElement";
 import { toSerializedTranslation } from "@/utils/translation";
-
+import { PlayerStats } from "@/models/gameStats";
 class AttackRequirement {
   readonly targets: Entity[] | "topDeck" | "any";
   readonly source: Card;
@@ -99,6 +99,8 @@ export class Player extends Entity {
   private _team: Team;
 
   private _character: CharacterCard | undefined = undefined;
+
+  stats: PlayerStats = new PlayerStats();
   /**
    * Creates a new Player instance.
    * 
@@ -110,6 +112,7 @@ export class Player extends Entity {
     user: string = crypto.randomUUID(),
   ) {
     super(id, 0, 0);
+    this._color = "#E6E420"; // Default player color
     this._team = team;
     this._hand = new Hand();
     this._inPlay = [];
@@ -224,7 +227,7 @@ export class Player extends Entity {
    * Returns true if the player has any attack requirement (must attack)
    */
   get hasAttackRequirement(): boolean {
-    return this._mustAttackEntity.length > 0;
+    return this._mustAttackEntity.filter(req => (req.checkAttackRemaining === false || this.attackThisTurn > 0)).length > 0;
   }
   
   /**
@@ -590,8 +593,8 @@ export class Player extends Entity {
   /**
    * Initializes per-turn action counters for this player.
    */
-  initializeTurnCounters(isCurrentPlayer: boolean, lootPlayPerTurn: number): void {
-    this._remainingLootPlay = isCurrentPlayer ? lootPlayPerTurn : 0;
+  initializeTurnCounters(isCurrentPlayer: boolean): void {
+    this._remainingLootPlay = 0;
     this._attackThisTurn = isCurrentPlayer ? 1 : 0;
     this._remainingPurchaseThisTurn = isCurrentPlayer ? 1 : 0;
   }
@@ -615,12 +618,12 @@ export class Player extends Entity {
       //   throw new GameError("Character already defined", toSerializedTranslation("error.behaviorError", {error: "Character already defined"}))
       this.character = card;
     }
-    else if (card.eternal)
-    {
-      let idx = this.inPlay.findIndex(c => c.eternal === false);
-      idx = idx < 0 ? this._inPlay.length : idx;
-      this._inPlay.splice(idx ,0, card);
-    }
+    // else if (card.eternal)
+    // {
+    //   let idx = this.inPlay.findIndex(c => c.eternal === false);
+    //   idx = idx < 0 ? this._inPlay.length : idx;
+    //   this._inPlay.splice(idx ,0, card);
+    // }
     else
       this._inPlay.push(card);
   }

@@ -7,6 +7,13 @@ export const extensionsAvailable = {
   "g2-": "Gold Box",
 };
 
+export enum EmoteType {
+  HurryUp = "hurryUp",
+  HappIsaac = "happIsaac",
+  SadIsaac = "sadIsaac",
+  Gamble = "gamble",
+}
+
 const basicSerializedTranslationSchema = z.object({
   key: z.string(),
 });
@@ -30,11 +37,18 @@ export const serializedTranslationSchema =
   });
 export type SerializedTranslation = z.infer<typeof serializedTranslationSchema>;
 
+const capabilitySchema = z.union([
+  z.literal(true),
+  serializedTranslationSchema,
+]);
+export type Capability = z.infer<typeof capabilitySchema>;
+
 export const identifierTypeSchema = z.object({
   nameKey: serializedTranslationSchema,
   slug: z.string(),
   globalId: z.number(),
   orientation: z.union([z.literal("portrait"), z.literal("landscape")]),
+  parent: z.string().optional(),
 });
 export type IdentifierType = z.infer<typeof identifierTypeSchema>;
 
@@ -57,6 +71,10 @@ const effectTextNumberSchema = z.object({
   value: z.number().int().nonnegative(),
 });
 export type EffectTextNumber = z.infer<typeof effectTextNumberSchema>;
+const playableCardSchema = cardSchema.extend({
+  canBePlayed: capabilitySchema,
+});
+export type PlayableCard = z.infer<typeof playableCardSchema>;
 
 const shopItemSchema = cardSchema.extend({ price: z.number() });
 const VisualEffectBoxSchema = z.object({
@@ -170,7 +188,7 @@ export type StackElement =
   | EndOfTurnJson
   | EffectOnStackJson;
 
-const selectionItemSchema: z.ZodType<SelectionItem> = z.lazy(() =>
+export const selectionItemSchema: z.ZodType<SelectionItem> = z.lazy(() =>
   z.union([
     z.object({ type: z.literal("card"), payload: cardSchema }),
     z.object({ type: z.literal("cardEffect"), payload: cardEffectSchema }),
@@ -178,6 +196,7 @@ const selectionItemSchema: z.ZodType<SelectionItem> = z.lazy(() =>
     z.object({ type: z.literal("player"), payload: entityTypeSchema }),
     z.object({ type: z.literal("monster"), payload: entityTypeSchema }),
     z.object({ type: z.literal("deck"), payload: deckNameSchema }),
+    z.object({ type: z.literal("character"), payload: roomCharacterSchema }),
     z.object({ type: z.literal("number"), payload: z.number() }),
     z.object({
       type: z.literal("effectTextNumber"),
@@ -219,6 +238,7 @@ const pendingSelectionReasonSchema = z.union([
   z.literal("maxHandSize"),
   z.literal("coinGift"),
   z.literal("miniDraft"),
+  z.literal("mulliganCharacters"),
 ]);
 export type PendingSelectionReason = z.infer<
   typeof pendingSelectionReasonSchema
@@ -249,12 +269,6 @@ const temporaryEffectSchema = z.object({
 });
 export type TemporaryEffect = z.infer<typeof temporaryEffectSchema>;
 
-const capabilitySchema = z.union([
-  z.literal(true),
-  serializedTranslationSchema,
-]);
-export type Capability = z.infer<typeof capabilitySchema>;
-
 const statsSchema = z.object({
   healthPoints: z.number(),
   attackPoints: z.number(),
@@ -278,6 +292,7 @@ export type SerializedCounter = z.infer<typeof serializedCounterSchema>;
 const attackableCardSchema = cardSchema.extend({
   counters: z.array(serializedCounterSchema).optional(),
   stats: statsSchema.optional(),
+  indomitable: z.boolean().optional(),
 });
 export type MonsterCard = z.infer<typeof attackableCardSchema>;
 
@@ -572,6 +587,8 @@ const gameParametersSchema = z.object({
   timer: numberGameParameterSchema,
   nbItemsInShop: numberGameParameterSchema,
   nbEncounters: numberGameParameterSchema,
+  mulliganCharacterNbOptions: numberGameParameterSchema,
+  mulliganCharacterReroll: booleanGameParameterSchema,
   // nbRooms: numberGameParameterSchema,
   deathPenaltyCoins: numberGameParameterSchema,
   deathPenaltyItem: numberGameParameterSchema,
@@ -778,6 +795,12 @@ const attackRequirementSchema = z.object({
 });
 
 export type AttackRequirement = z.infer<typeof attackRequirementSchema>;
+
+const emoteSchema = z.object({
+  emote: z.enum(EmoteType),
+});
+export type Emote = z.infer<typeof emoteSchema>;
+
 const cardActivationSchema = z.object({
   type: z.union([
     z.literal("hand"),
@@ -839,7 +862,7 @@ const playerSchema = z.object({
   team: z.enum(Team),
   handSize: z.number(),
   hand: z.array(cardSchema).optional(),
-  character: inPlayWithStatsCardSchema,
+  character: inPlayWithStatsCardSchema.optional(),
   inPlay: z.array(inPlayCardSchema),
   souls: z.number(),
   soulCards: z.array(cardSchema),
@@ -856,8 +879,8 @@ const playerSchema = z.object({
 export type Player = z.infer<typeof playerSchema>;
 
 const playerMeSchema = playerSchema.extend({
-  hand: z.array(cardSchema),
-  character: inPlayWithStatsMeCardSchema,
+  hand: z.array(playableCardSchema),
+  character: inPlayWithStatsMeCardSchema.optional(),
   inPlay: z.array(inPlayMeCardSchema),
   numberOfCardsOverMaxHandSize: z.number(),
   capabilities: z.object({
@@ -1066,6 +1089,45 @@ const roomBroadcastSchema = z.object({
 });
 export type RoomBroadcast = z.infer<typeof roomBroadcastSchema>;
 
+const playerStatsSchema = z.object({
+  nbAttacksDeclared: z.number(),
+  nbLootPlayed: z.number(),
+  nbPurchases: z.number(),
+  nbPurchaseTopDeck: z.number(),
+  nbPurchaseCancelled: z.number(),
+  nbRoomActivated: z.number(),
+  nbItemActivated: z.number(),
+  nbMobKilled: z.number(),
+  nbPlayerKilled: z.number(),
+  nbSuicides: z.number(),
+  nbDeaths: z.number(),
+  nbLootGained: z.number(),
+  nbAttackTopDeck: z.number(),
+  nbItemGained: z.number(),
+  nbCoinsGained: z.number(),
+  coinsGiven: z.number(),
+  coinsPaid: z.number(),
+  nbDamageTaken: z.number(),
+  nbDamageDealt: z.number(),
+  nbNonAttackRolledValues: z.array(z.number()).length(6),
+  nbAttackRolledValues: z.array(z.number()).length(6),
+});
+export type SerializedPlayerStatsSchema = z.infer<typeof playerStatsSchema>;
+
+const gameOverScreenPlayerDataSchema = z.object({
+  player: playerSchema,
+  playerStats: playerStatsSchema,
+  type: z.enum(["win", "lose"]),
+  title: serializedTranslationSchema,
+});
+export type GameOverScreenPlayerData = z.infer<typeof gameOverScreenPlayerDataSchema>;
+  
+const gameOverBroadcastSchema = z.object({
+  type: "gameOver",
+  data: z.array(gameOverScreenPlayerDataSchema),
+});
+export type GameOverBroadcast = z.infer<typeof gameOverBroadcastSchema>;
+
 const saveGameResponseSchema = z.union([
   z.object({
     status: z.literal(200),
@@ -1245,6 +1307,7 @@ export const schemas = {
   enterRoomRequest: enterRoomRequestSchema,
   setJoinPermission: setJoinPermissionSchema,
   loadGameRequest: loadGameRequestSchema,
+  emoteRequest: emoteSchema,
   setGameParameterRequest: setGameParameterRequestSchema,
   loadGameParametersRequest: loadGameParametersRequestSchema,
   selectCharacterRequest: selectCharacterRequestSchema,
@@ -1266,6 +1329,7 @@ export namespace Requests {
   export type InsertStackElementBefore = z.infer<
     typeof insertStackElementBeforeSchema
   >;
+  export type Emote = z.infer<typeof emoteSchema>;
   export type Activate = z.infer<typeof cardActivationSchema>;
   export type ActivateWithID = z.infer<typeof cardActivationWithIdSchema>;
   export type Purchase = z.infer<typeof purchaseSchema>;
@@ -1317,6 +1381,7 @@ export namespace Responses {
   export type SubmitSelection = BasicResponse;
   export type InsertStackElementBefore = BasicResponse;
   export type EndTurn = BasicResponse;
+  export type Emote = BasicResponse;
   export type Activate = NextTargetSelectorResponse;
   export type Purchase = BasicResponse;
   export type DeclarePurchase = BasicResponse;
@@ -1358,10 +1423,13 @@ export namespace Responses {
   export type AdminReplyToMessage = AdminReplyToMessageResponse;
 }
 
+
 export interface ServerToClientEvents {
   "on:room:changed": (room: Room | null) => void;
   "on:user:assigned": (userId: string | null) => void;
+  "on:player:emote": (emote: EmoteType, name: string) => void;
   "on:room:broadcast": (broadcast: RoomBroadcast) => void;
+  "on:room:gameover": (broadcast: GameOverBroadcast) => void;
   "on:game:quit": (userId: string) => void;
   "on:admin:changed": (admin: AdminResponse) => void;
 }
@@ -1536,6 +1604,11 @@ export interface ClientToServerEvents {
   loadGame: (
     request: Requests.LoadGame,
     callback: (response: Responses.LoadGame) => void,
+  ) => void;
+
+  emote: (
+    request: Requests.Emote,
+    callback: (response: Responses.Emote) => void,
   ) => void;
 
   setGameParameter: (

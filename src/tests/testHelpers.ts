@@ -215,6 +215,7 @@ export async function setupTestGame(config: GameSetupConfig = {}): Promise<GameS
 
     const game = new Game(randomSeed, params);
     mockGameSelections(game);
+    game.waitForNextTick = async () => {};
     
     // Setup game
     game.cardHandler.setupDecks();

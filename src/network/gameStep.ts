@@ -246,6 +246,22 @@ export const enterGameStep = (
     }),
   );
 
+  socket.on("emote", async (payload, callback) =>
+    errorGuardedEndpoint(callback, async () =>
+      payloadGuardedEndpoint(
+        payload,
+        schemas.emoteRequest,
+        callback,
+        (payload) => {
+          for (const user of room.users) {
+            user.socket.emit("on:player:emote", payload.emote, player.id);
+          }
+          return callback({ status: 200 });
+        },
+      ),
+    ),
+  );
+
   socket.on("giveCoins", async (payload, callback) =>
     errorGuardedEndpoint(callback, async () =>
       payloadGuardedEndpoint(
@@ -374,10 +390,6 @@ export const enterGameStep = (
 
     socket.on("debugListCardsICanRemove", async (callback) =>
       errorGuardedEndpoint(callback, () => {
-        room.game.addToHistory({
-          type: "DebugListCardsICanRemove",
-          issuer: player.id,
-        });
         const cards = room.game
           .playerCardsAndGameOwnedCards(player)
           .map((c) => c.jsonAPI);

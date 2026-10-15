@@ -1,6 +1,7 @@
 import {
   BsoulCard,
   Card,
+  CharacterCard,
   ItemCard,
   LootCard,
   MonsterCard,
@@ -16,7 +17,7 @@ import { DiceRoll, LootStepOnStack } from "@/models/stackElement";
 import type { DeckType, DecksCollection } from "@/models/types/cardTypes";
 import { EffectData } from "@/models/types/cardTypes";
 import { type LoseCoinsReason, type TriggerEvent } from '@/models/types/eventTypes';
-import type { Animation, DetailedState, PendingSelectionReason, SelectionItem, SerializedTranslation, StackElementJson, Team } from "@/shared/api";
+import type { Animation, DetailedState, GameOverBroadcast, PendingSelectionReason, SelectionItem, SerializedTranslation, StackElementJson, Team } from "@/shared/api";
 import { shuffle } from "@/utils/auxiliary";
 import { generateAnimationId } from "@/utils/random";
 import { Signal, type ReadableSignal } from "micro-signals";
@@ -39,13 +40,14 @@ import { TurnHandler } from "./handlers/turnHandler";
 import { miniDraft } from "./variants";
 import { toSerializedTranslation } from "@/utils/translation";
 import { GameError } from "@/models/GameError";
+import { getTitles } from "./gameStats";
 
 /*
  * The Game class is the central hub of the game logic, managing the state of the game, players, monsters, decks, shop, encounters, stack, and more. 
  * It also handles all player actions such as declaring attacks, dealing damage, resolving deaths, and managing the game history. 
  */
 export class Game {
-  private _turnHandler: TurnHandler = new TurnHandler();
+  private _turnHandler: TurnHandler = new TurnHandler(this);
   private _random: () => number = () => {throw new GameError("Random generator not initialized yet.", 
     toSerializedTranslation("error.behaviorError", {error: "Random generator not initialized yet."}))
   };
@@ -68,6 +70,7 @@ export class Game {
   private _selectionHandler = new SelectionHandler(this);
   private _cardHandler = new CardHandler(this);
   private _promises: Promise<boolean>[] = [];
+  _playersWithRandomCharacter: Player[] = [];
 
   private _onStateChange: Signal<void> = new Signal();
   onStateChange: ReadableSignal<void> = this._onStateChange.readOnly();
@@ -75,8 +78,8 @@ export class Game {
   private _onRoomBroadcast: Signal<ServerRoomBroadcast> = new Signal();
   onRoomBroadcast: ReadableSignal<ServerRoomBroadcast> = this._onRoomBroadcast.readOnly();
 
-  private _onEndReached: Signal<void> = new Signal();
-  onEndReached: ReadableSignal<void> = this._onEndReached.readOnly();
+  private _onEndReached: Signal<GameOverBroadcast> = new Signal();
+  onEndReached: ReadableSignal<GameOverBroadcast> = this._onEndReached.readOnly();
 
   constructor(seed: string = "", gameParameters?: GameParameters) {
     this.seed = seed; // if seed is empty, it will be set to a random value.
@@ -181,6 +184,10 @@ export class Game {
 
   get entities(): Entity[] {
     return this.entityHandler.entities;
+  }
+
+  get isEndPhase(): boolean {
+    return this.stack.elements.some((e) => e instanceof EndOfTurnOnStack);
   }
 
   get currentPlayer(): Player {
@@ -438,6 +445,10 @@ export class Game {
         if(this.turnHandler.turnId !== turnId) // some dice roll may end the turn.
           return;
         this.emit("on:dice:resolved", { eventIssuer: elem.issuer, dice: elem });
+        if(elem.attackRoll)
+          elem.issuer.stats.nbAttackRolledValues[elem.value - 1]! += 1;
+        else
+          elem.issuer.stats.nbNonAttackRolledValues[elem.value - 1]! += 1;
         await this.resolveCallbacks();
     });
   }
@@ -461,6 +472,7 @@ export class Game {
     this.assert.gameNotStarted();
     for (const p of players) 
       this.entityHandler.addPlayer(new Player(p.issuer, p.team, p.user));
+    this._playersWithRandomCharacter = players.filter((p) => p.character === "random").map((p) => this.players.find((player) => player.id === p.issuer)!);
     const chara = this.cardHandler.getCharactersFromSlugs(players.map((p) => p.character));
     this.cardHandler.assignCharactersToPlayers(chara);
 
@@ -503,13 +515,62 @@ export class Game {
         this
       );
     }
-    // No user interaction on this trigger, use on:game:stat. This is for cain.
+  } 
+  /**
+   * Select character cards when eternal should also be displayed. This is used for the mulliganCharacters method, as well as for the clicket effect.
+   * @param game 
+   */
+  async selectRawCharacterAmong(characters: CharacterCard[], player: Player, min: number, max: number): Promise<{ selected: CharacterCard[]; remaining: CharacterCard[] }> {
+    const selectionItem: SelectionItem[] = characters.map((card) => ({type: "character", payload: { character: card.slug, eternal: card.eternalCard || "random" }}));
+    return this.select(player, min, max, selectionItem, toSerializedTranslation("startStep.playerList.selectCharacterButton.popup.title"), "mulliganCharacters", true, false).then((result) => {
+      return { selected: result.selected.map((item) => characters.find((card) => item.type === "character" && card.slug === item.payload.character)!),
+         remaining: result.remaining.map((item) => characters.find((card) => item.type === "character" && card.slug === item.payload.character)!)};
+    });
+  }
+
+  async mulliganCharacters(): Promise<void> {
+    this._playersWithRandomCharacter;
+    for(let nbOptions = this.gameParameters.mulliganCharacterNbOptions.value; nbOptions > 0 && this._playersWithRandomCharacter.length > 0; nbOptions--)
+        {
+            const minVal = nbOptions === 1 || !this.gameParameters.mulliganCharacterReroll.value ? 1 : 0;
+            let currentUnresolvedPlayers = [...this._playersWithRandomCharacter];
+            let toPutBack: CharacterCard[] = [];
+            
+            const promises = [];
+            for( const player of currentUnresolvedPlayers) {
+                const availableCharacters = this.decks.character.length + this.decks.character.discard.length;
+                const numberToDraw = Math.min(nbOptions, availableCharacters);
+                if (numberToDraw === 0)
+                  continue;
+                const drawn: CharacterCard[] = this.decks.character.drawSeveral(numberToDraw);
+                promises.push({player: player, selection: this.selectRawCharacterAmong(drawn, player, minVal, 1)});
+            }
+            const pairs = await Promise.all(promises.map(async (p) => ({player: p.player, selection: await p.selection})));
+            for(const pair of pairs) {
+                const player = pair.player;
+                const card = pair.selection.selected[0];
+                if(card !== undefined) {
+                    await this.cardHandler.replaceCharacter(player, card, false);
+                    this._playersWithRandomCharacter.splice(this._playersWithRandomCharacter.indexOf(player), 1);
+                }
+                toPutBack.push(...pair.selection.remaining);
+            }
+            for(const card of toPutBack) {
+                this.decks.character.addBottomPosition(card);
+            }
+            this.decks.character.shuffle();
+            this.dispatch();
+        }
+    this.dispatch();
+    return;
+  }
+
+  async atGameStartDecisions(): Promise<void> {
+    await this.mulliganCharacters();
+    // No user interaction on this trigger, use on:game:stat. This is for Cain.
     this.emit("on:game:start:before", {});
     this.assignColorsToPlayers();
     this.entityHandler.healEveryone();
-  } 
-
-  async atGameStartDecisions(): Promise<void> {
     this.emit("on:game:start", {}); // Eden starting item choice
     if(this.gameParameters.miniDraft.value)
       miniDraft(this); // Add resolutions to game.promises.
@@ -524,8 +585,17 @@ export class Game {
     if(false)
       return;
     
-    const card = this.obtainCard("fsp2-rainbow_baby") as ItemCard;
-    this.cardHandler.addInPlay(this.currentPlayer, card);
+    const card0 = this.obtainCard("r-golden_trinket") as LootCard;
+    this.cardHandler.addCardToHand(this.currentPlayer, card0);
+    for( const slug of ["fsp2-abaddon", "b2-bum_friend", "b2-pandoras_box"])
+    {   
+        const card1 = this.obtainCard(slug) as ItemCard;
+        this.cardHandler.addInPlay(this.currentPlayer, card1);
+    }
+    // // this.cardHandler.addInPlay(this.currentPlayer, card);
+    const card = this.obtainCard("r-peeping_fatty") as MonsterCard;
+    this.encounters.forceSetMonsterAtSlot(0, card);
+    this.entityHandler.kill(this.currentPlayer, this.monsters[0]!, {card: card, visualEffectBox: {startIndex: 0, endIndex:0}}) 
   }
 
   initializeWinningCondition(): void {
@@ -557,28 +627,12 @@ export class Game {
     if(this._isWon)
       return;
     this._isWon = true;
-    this._onEndReached.dispatch();
-    if(player === null)
-    {
-      this._onRoomBroadcast.dispatch({
-        type: "victory",
-        title: toSerializedTranslation("toast.timeUp.title"),
-        message: toSerializedTranslation("toast.timeUp.message"),
-        players: this.players.map(p => p.id),
-      });
-    }
-    else 
-      for(const p of this.players)
-      {
-        const isWinner = p.team === player.team;
-
-        this._onRoomBroadcast.dispatch({
-          type: "victory",
-          title: isWinner ? toSerializedTranslation("toast.winning.title") : toSerializedTranslation("toast.losing.title"),
-          message: isWinner ? toSerializedTranslation("toast.winning.message") : toSerializedTranslation("toast.losing.message"),
-          players: [p.id],
-        });
-      }
+    this._onEndReached.dispatch(
+      this._gameStateSerializer.serializeEndGame(player?.team ?? null)
+    );
+    for(const p of this.players)
+      console.log(`player: ${p.id}, stats: ${JSON.stringify(p.stats)}`);
+    getTitles(this.players);
   }
 
   /**
@@ -586,7 +640,7 @@ export class Game {
    */
   reset(newSeed: boolean = true): void {
     this._historicHandler = new HistoricHandler(this);
-    this._turnHandler = new TurnHandler();
+    this._turnHandler = new TurnHandler(this);
     this._entityHandler = new EntityHandler(this);
     this._cardHandler = new CardHandler(this);
     this.seed = (newSeed ? "" : this.seed); // If newSeed is true, set to a random value in the setter.
@@ -608,7 +662,7 @@ export class Game {
    */
   async startTurn(): Promise<void> {
     this.players.forEach((p) => {
-      p.initializeTurnCounters(p === this.currentPlayer, this.gameParameters.lootPlayPerTurn.value);
+      p.initializeTurnCounters(p === this.currentPlayer);
     });
     for(const room of this.rooms?.activeRooms ?? [])
     {
@@ -628,7 +682,6 @@ export class Game {
       await this.executeWhenStackEmpty(async () => {
         const lootStep = new LootStepOnStack(this.currentPlayer, 1, this);
         this.addToStack(lootStep);
-        this.emit("on:loot:step", { eventIssuer: lootStep.player, lootStep });
       });
     });
   }
@@ -638,6 +691,7 @@ export class Game {
    */
   lootStep(player: Player, numberToLoot: number): void {
     this.loot(player, numberToLoot, "lootStep");
+    player.addLootPlay(this.gameParameters.lootPlayPerTurn.value);
     this.emit("on:your:turn", { eventIssuer: player });
   }
 
@@ -649,7 +703,6 @@ export class Game {
     this.actions.canEndTurn(player, true);
     this.stack.push(new EndOfTurnOnStack(player, this));
     this.emit("on:turn:end", { eventIssuer: player });
-    this.handleRoomChange();
     await this.executeWhenStackEmpty(async () => {
       this.emit("till:turn:end", { eventIssuer: player });
       await this.verifyHandSize(player);
@@ -685,12 +738,28 @@ export class Game {
     }
   }
 
-  handleRoomChange(): void {
+  removeStaleRooms(registerPlayer: Player | undefined): void {
     if(this.rooms === undefined) return;
-    if(!this.entityHandler.monsterDiedThisTurn) return;
-    if(this.rooms.activeRooms.every((room) => room.canBeDiscarded === false)) return;
-    const data:EffectData = new EffectData(this.rooms.activeRooms[0]!, () => this.currentPlayer, []);
-    addPassiveEffectToStack(this, CurrentPlayerDecidesToChangeRoom(this), data, "A monster died this turn, you can choose to put a room card into discard.");
+    const staleRooms = this.rooms.registerTurnEndForStability(registerPlayer?.id, this.players.length);
+    if(this.players.every((player) => player.team === this.currentPlayer.team)) {
+      // Discard any room whose top card hasn't changed since every player has had a turn.
+      for (const room of staleRooms) {
+        if (room.canBeDiscarded)
+          this.cardHandler.discard(room);
+      }
+    }
+  }
+
+  async handleRoomChange(): Promise<void> {
+    if(this.rooms === undefined) return;
+    const staleRooms = this.rooms.registerTurnEndForStability(this.currentPlayer.id, this.players.length);
+    if(this.entityHandler.monsterDiedThisTurn){
+      if(this.rooms.activeRooms.every((room) => room.canBeDiscarded === false)) return;
+      const data:EffectData = new EffectData(this.rooms.activeRooms[0]!, () => this.currentPlayer, []);
+      await CurrentPlayerDecidesToChangeRoom(this)(data);
+    }
+    
+    this.removeStaleRooms(undefined);
   }
 
 ////////////////////////////////////// Handlers shortcuts //////////////////////////////////////
@@ -742,6 +811,12 @@ export class Game {
       );
     }
 
+    if( this.encounters.cardsOnTop[position] !== undefined && this.encounters.cardsOnTop[position].indomitable) {
+      throw new GameError("Invalid monster position.",
+        toSerializedTranslation("error.cannotCoverIndomitable")
+      );
+    }
+
     this.encounters.draw(position);
 
     return `You have drawn a new monster at position ${position}.\n`;
@@ -779,9 +854,20 @@ export class Game {
     this._historicHandler.addToHistory(entry);
   }
 
+  /** Drops a trailing "randomSeed" history entry, e.g. one left over from a replay reseed. */
+  removeTrailingRandomSeed(): void {
+    this._historicHandler.removeTrailingRandomSeed();
+  }
+
   dispatch(): void {
     this._onStateChange.dispatch();
   }
+
+  /** Yields one event-loop tick so connected clients can observe the latest game state. */
+  async waitForNextTick(): Promise<void> {
+    return new Promise(resolve => setTimeout(resolve, 0));
+  }
+
   /**
    * Dispatch a message to specific players in the game.
    */
@@ -916,6 +1002,7 @@ export class Game {
         coinGained: amount,
         source: source,
       });
+      player.stats.nbCoinsGained += amount[0]!;
     }
     this.dispatch();
     return `New amount of coins: ${player.coins} coins.\n`;
@@ -945,7 +1032,10 @@ export class Game {
     this.emit("on:coin:lost:after", { eventIssuer: player, coinLost });
     if(coinLost === 0 && reason === "paiement" && asMany === false && coins > 0)
       return -1; // signal that the player cannot pay the cost.
-    
+    if(reason === "gift")
+      player.stats.coinsGiven += coinLost;
+    if(reason === "paiement")
+      player.stats.coinsPaid += coinLost;
     return coinLost;
   }
 
@@ -1074,6 +1164,10 @@ export class Game {
   ): Promise<void> {
     this._stackSubsetCallbacks.push({stackIds: ids, callback});
     await this.resolveCallbacks();
+  }
+
+  hasCallbacks(): boolean {
+    return this._stackSubsetCallbacks.length > 0;
   }
 
   /**

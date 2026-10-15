@@ -21,7 +21,7 @@ import type { StackElement } from "../stack";
 import { DamageOnStack, DiceRoll, } from "../stackElement";
 import { TargetBuilder } from "../targetBuilder";
 import { deckSelector, inplayUnchargedItemSelector as inplayChargeableItemSelector, visibleItemSelector } from "../targetSelector";
-import { type DeckType, EffectData, type EffectFunction, type SyncEffectFunction, type AsyncEffectFunction, type TargetsSelector } from "../types/cardTypes";
+import { type DeckType, EffectData, type EffectFunction, type SyncEffectFunction, type AsyncEffectFunction, type TargetsSelector, type DecksCollection } from "../types/cardTypes";
 import type { OnTurnEndData } from "../types/eventTypes";
 import { effectParser, INFINITY, type ParsedEffect, type SyncParsedEffect } from "./parsing/effectParser";
 import { addPassiveEffectToStack } from "./passiveEffect";
@@ -299,7 +299,7 @@ export function look1EachDeckEffect(game: Game): AsyncEffectFunction {
             const topCard = game.decks[deckName]?.draw();
             topCards.push(topCard!);
         }
-        const selectResult = await data.selectAndRecord(game, data.issuer, 0, 3, topCards, qq("pending.cardsToPutOnBottom"), data.serializedCardAndBox, false, false);
+        const selectResult = await data.selectAndRecord(game, data.issuer, 0, game.deckNames.length, topCards, qq("pending.cardsToPutOnBottom"), data.serializedCardAndBox, false, false);
         for (const card of topCards) {
             if(selectResult.selected.includes(card))
                 game.cardHandler.addBottomPosition(card.type, card);
@@ -595,7 +595,7 @@ export function becomesCopyOfItemIndefinitelyEffect(game: Game): SyncEffectFunct
         
         // Transform this card to become the copy, with effect attachment
         thisItem.becomesCopyOf(itemToCopy, (card) => {
-            game.cardHandler.attachEffectsToCard(card);
+            game.cardHandler.attachEffectsToCard(card, true);
         });
         data.it.tags.restoreIndefinite = data.it.tags.restore;
         data.it.tags.restore = undefined;
@@ -620,7 +620,7 @@ export function becomesCopyOfItemUntilEndOfTurnEffect(game: Game): SyncEffectFun
         
         // Transform this card to become the copy and get the restore function
         const { restore } = thisItem.becomesCopyOf(itemToCopy, (card) => {
-            game.cardHandler.attachEffectsToCard(card);
+            game.cardHandler.attachEffectsToCard(card, true);
         });
         let restored = false;
         let unsubscribe = (): void => {};
@@ -662,7 +662,7 @@ export function becomesCopyOfItemUntilStartOfYourNextTurnAndRechargeEffect(game:
         game.cardHandler.recharge(thisItem, data.it);
         // Transform this card to become the copy and get the restore function
         const { restore } = thisItem.becomesCopyOf(itemToCopy, (card) => {
-            game.cardHandler.attachEffectsToCard(card);
+            game.cardHandler.attachEffectsToCard(card, true);
         });
         let restored = false;
         let unsubscribe = (): void => {};
@@ -746,7 +746,7 @@ export function eachOtherPlayerDiscardsLootEffect(game: Game): AsyncEffectFuncti
 export function modifyCoinGainedEffect(game: Game, modifier: (original:number) => number): SyncEffectFunction {
     return (data: EffectData) => {
         if (data.issuer instanceof Player === false) return false;
-        const originalAmount = data.next;
+        const originalAmount = data.peek();
         if (!originalAmount || !(originalAmount instanceof Array) || originalAmount.length !== 1 || typeof originalAmount[0] !== "number") {
             throw new GameError(`Invalid original amount for ModifyCoinGainedEffect: ${originalAmount}`, toSerializedTranslation("error.behaviorError", { error: `Invalid original amount for ModifyCoinGainedEffect: ${originalAmount}`}));
         }
@@ -764,11 +764,11 @@ export function stealSoulEffect(game: Game, from: "next" | "anotherPlayer"): Asy
             const target = data.next;
             if(target instanceof Player === false)
                 return false;
-            souls = target.souls;
+            souls = target.targetableSouls;
         }
         else if(from === "anotherPlayer")
         {
-            souls = game.players.filter(p => p !== data.issuer).flatMap(p => p.souls);
+            souls = game.players.filter(p => p !== data.issuer).flatMap(p => p.targetableSouls);
         }
         if(souls.length === 0) return false;
         const soulToSteal = (await data.selectAndRecord(game, data.issuer, 1, 1, souls, qq("pending.soulToSteal"), data.serializedCardAndBox, true, true)).selected[0]!;
@@ -787,28 +787,31 @@ export function stealCoinsEffect(game: Game, amount: number): SyncEffectFunction
     };
 }
 
-export function lookAtTop3Put1InSlotEffect(game: Game, x: number): AsyncEffectFunction {
+export function lookAtTopXPut1InSlotEffect(game: Game, x: number): AsyncEffectFunction {
     return async (data: EffectData) => {
         if(game.entitiesInCombat.length > 0)
             return false;
         if (data.issuer instanceof Player === false) return false;
         const deck = data.next;
         if(!isDeckType(deck._type) || !deck)
-            throw new GameError(`Target of lookAtTop3Put1InSlotEffect should be a deck type, got ${deck}`, toSerializedTranslation("error.behaviorError", { error: `Target of lookAtTop3Put1InSlotEffect should be a deck type, got ${deck}`}));
-        const topCards = game.cardHandler.getFirstCardsOfDeck(deck._type, x);
+            throw new GameError(`Target of lookAtTopXPut1InSlotEffect should be a deck type, got ${deck}`, toSerializedTranslation("error.behaviorError", { error: `Target of lookAtTopXPut1InSlotEffect should be a deck type, got ${deck}`}));
+        const topCards = game.decks[deck._type as keyof DecksCollection].cards.slice(0, x);
+        
         if (topCards.length === 0) return false;
-        const selectedCard = (await data.selectAndRecord(game, data.issuer, 1, 1, topCards, qq("pending.cardToPutInSlot"), data.serializedCardAndBox, true, true)).selected[0]!;
+        const selectedCard: Card = (await data.selectAndRecord<Card>(game, data.issuer, 1, 1, topCards, qq("pending.cardToPutInSlot"), data.serializedCardAndBox, true, true)).selected[0]!;
         if(!selectedCard)
             return false;
         const slot = deck._type === "monster" ?
-            (await data.selectAndRecord(game, data.issuer, 1, 1, game.monsters.filter(m => m.isEngagedInCombat === false), qq("pending.slotToPlaceCardIn"), data.serializedCardAndBox, true)).selected[0]!
+            (await data.selectAndRecord(game, data.issuer, 1, 1, game.encounters.coverableSlots, qq("pending.slotToPlaceCardIn"), data.serializedCardAndBox, true)).selected[0]!
             : (await data.selectAndRecord(game, data.issuer, 1, 1, game.rooms?.activeRooms!, qq("pending.slotToPlaceCardIn"), data.serializedCardAndBox, true)).selected[0]!;
         if (!slot) return false;
         if(deck._type === "monster") {
+            game.encounters.obtainCard(selectedCard.slug, selectedCard.globalId);
             game.cardHandler.addTopPosition("monster", selectedCard);
-            game.encounters.draw(game.encounters.visible.indexOf((slot as Monster).card));
+            game.encounters.draw(game.encounters.visible.indexOf(slot as MonsterCard));
         }
         else {
+            game.rooms?.obtainCard(selectedCard.slug, selectedCard.globalId);
             game.cardHandler.addTopPosition("room", selectedCard);
             game.rooms?.draw(game.rooms.activeRooms.indexOf(slot as RoomCard));
         }
@@ -818,7 +821,7 @@ export function lookAtTop3Put1InSlotEffect(game: Game, x: number): AsyncEffectFu
 
 export function getCardFromLootDiscardEffect(cardTxt: string | "top", game: Game, exactMatch: boolean): AsyncEffectFunction {
     return async (data: EffectData) => {
-        const possibilities = game.decks.loot.discard.filter(card => exactMatch ? card.name === cardTxt : card.name.includes(cardTxt));
+        const possibilities = game.decks.loot.discard.filter(card => exactMatch ? card.name.toLowerCase() === cardTxt : card.name.toLowerCase().includes(cardTxt));
         if(possibilities.length === 0 && cardTxt !== "top") return false;
         const card = cardTxt === "top" ? game.decks.loot.discard[0] :
             (await data.selectAndRecord(game, data.issuer as Player, 1, 1, possibilities, qq("pending.cardToGet"), data.serializedCardAndBox, true, true)).selected[0]!;
@@ -887,6 +890,9 @@ export function subtractUpToXFromRollEffect(game: Game): SyncEffectFunction {
     return (data: EffectData) => {
         const chosenDiceRoll: DiceRoll = data.next as DiceRoll;
         const subtractValue = data.next as number;
+        if(typeof subtractValue !== "number") {
+            throw new GameError(`Invalid value for SubtractUpToXFromRollEffect: ${subtractValue}`, toSerializedTranslation("error.behaviorError", { error: `Invalid value for SubtractUpToXFromRollEffect: ${subtractValue}`}));
+        }
         chosenDiceRoll.subtract(subtractValue);
         return true;
     };
@@ -1175,10 +1181,6 @@ export function becomeSoulIfAboveXCountersEffect(countersThreshold: number, game
             const owner = game.getOwner(data.it);
             if(owner instanceof Player === false)
                 return false;
-            if(!game.cardHandler.removeInPlay(owner, data.it as ItemCard))
-                {
-                    return false;
-                };
             enterPlayBecomeSoulEffect(game)(new EffectData(data.it, () => owner, [], data.visualEffectBox));
         }
         return true;
@@ -1255,14 +1257,15 @@ export function lootEqualToCardsDiscardedEffect(game: Game): SyncEffectFunction 
 }
 
 export function discardTopOfDeckEffect(game: Game, youMayEffectHanging: boolean[] = [false]): AsyncEffectFunction {
+    const youMay: boolean = youMayEffectHanging[0]!;
+    youMayEffectHanging[0] = false;
     return async (data: EffectData) => {
         if (data.issuer instanceof Player === false) return false;
-        const selection = (await data.selectAndRecord(game, data.issuer, youMayEffectHanging[0] ? 0 : 1, 1, deckSelector(undefined, game)(data.issuer), qq("pending.deckToDiscardTopCardOf"), data.serializedCardAndBox, true, true)).selected;
+        const selection = (await data.selectAndRecord(game, data.issuer, youMay ? 0 : 1, 1, deckSelector(undefined, game)(data.issuer), qq("pending.deckToDiscardTopCardOf"), data.serializedCardAndBox, true, true)).selected;
         if(selection.length === 0) return true;
         const deck = selection[0];
         if(deck === undefined || !isDeckType(deck._type))
             throw new GameError(`Invalid deck type: ${deck._type}`, toSerializedTranslation("error.invalidDeckType", { deckType: deck._type }));
-        youMayEffectHanging[0] = false;
         const topCard = deck.draw();
         game.cardHandler.discard(topCard);
         return true;
@@ -1579,6 +1582,7 @@ export function healMonsterThenDamageAnotherEffect(game: Game): AsyncEffectFunct
         const monsterToHeal = data.next as Monster;
         if(monsterToHeal === undefined) throw new GameError("No monster selected to heal.", toSerializedTranslation("error.noMonsterSelected"));
         if(!monsterToHeal.isEngagedInCombat) return false;
+        if(monsterToHeal.currentHealthPoints === 0) return false;
 
         const healAmount = monsterToHeal.healthPoints - monsterToHeal.currentHealthPoints;
         game.entityHandler.heal(monsterToHeal, healAmount);
@@ -1617,7 +1621,7 @@ export function putRoomOrMonsterIntoDiscardEffect(game: Game, youMay: boolean): 
             {
                 console.log("Failed to flush monster:", target.id);
                 console.log("Current monsters in slots:", game.monsters.map(m => m ? m.card.name : null));
-                console.log("Current monsters in slots:", game.encounters.cardsOnTop.map(m => m ? m.name : null));
+                console.log("Current monsters in encounters:", game.encounters.cardsOnTop.map(m => m ? m.name : null));
                 throw new GameError("Failed to flush monster.", toSerializedTranslation("error.failedToFlushMonster"));
             }
             return true;
@@ -1884,7 +1888,7 @@ export function changeNumberInEffectTextEffect(game: Game, val: number, min: num
         }else
             targetCard.cleanup();
         try {
-            const {originalState, restore} = targetCard.becomesCopyOf(targetCard, (card)=>game.cardHandler.attachEffectsToCard(card));
+            const {originalState, restore} = targetCard.becomesCopyOf(targetCard, (card)=>game.cardHandler.attachEffectsToCard(card, true));
             cleanTarget = (): void => {
                 originalState.effectOutcomes = oldOutcomes;
                 restore();
@@ -2147,6 +2151,7 @@ export function lookAtHandAndStealLootEffect(game: Game): AsyncEffectFunction {
 
 export function endTurnAndResetStackEffect(game: Game): AsyncEffectFunction {
     return async (data: EffectData) => {
+        if(game.isEndPhase) return false;
         game.resetStack();
         game.resetCallbacks();
         game.currentPlayer.clearAttackRequirement();
@@ -2195,7 +2200,7 @@ export function becomesCopyOfEternalItemLosesEternalEffect(game: Game): SyncEffe
         if(!game.getOwner(data.it))
             return false;
         data.it.becomesCopyOf(target, (card) => {
-            game.cardHandler.attachEffectsToCard(card);
+            game.cardHandler.attachEffectsToCard(card, true);
         });
         if(!data.it || !(data.it instanceof ItemCard))
             throw new GameError("Invalid source item for becomesCopyOfEternalItemLosesEternalEffect.", toSerializedTranslation("error.behaviorError", { error: "Invalid source item for becomesCopyOfEternalItemLosesEternalEffect."}));
@@ -3343,7 +3348,7 @@ export function lookAndReorderTopCardsEffect(game: Game, numberCards: number, de
 export function lookAndReorderTopCardsEffect(game: Game, numberCards: number, deckNameParam: string | undefined | "selectOnResolve" = undefined, issuerType: "currentPlayer" | "dataIssuer" | "diceOwner" = "dataIssuer"): EffectFunction {
     return async (data: EffectData) => {
         let issuer = data.issuer;
-        if(issuerType === "currentPlayer")
+        if(issuerType === "currentPlayer" || (issuerType === "dataIssuer" && data.issuer instanceof Player === false))
             issuer = game.currentPlayer;
         if(issuerType === "diceOwner") {
             const roll = data.next as DiceRoll;
@@ -3384,13 +3389,13 @@ export function addOrSubtractXFromRollEffect(game: Game): SyncEffectFunction {
     };
 }
 
-export function eachOtherPlayerLootsAndYouLootEffect(game: Game, amount: number): AsyncEffectFunction {
+export function eachOtherPlayerLootsGivesYouOneEffect(game: Game, amount: number): AsyncEffectFunction {
     return async (data: EffectData) => {
         if (data.issuer instanceof Player === false) return false;
         for (const player of game.players) {
             if (player !== data.issuer) {
-                const choice = (await data.selectAndRecord(game, data.issuer, 1, 1, ["Yes", "No"], qq("pending.doYouWantToLootCards", { value: amount, player: data.issuer.id }), data.serializedCardAndBox, true, true)).selected[0];
-                if(choice === "Yes")
+                const choice = (await data.selectAndRecord(game, player, 1, 1, [qq("common.yes"), qq("common.no")], qq("pending.doYouWantToLootCards", { value: amount, player: data.issuer.id }), data.serializedCardAndBox, true, true)).selected[0];
+                if(choice !== undefined && choice.key === "common.yes")
                 {
                     game.loot(player, amount);
                     const cardToGive = (await data.selectAndRecord(game, player, 1, 1, player.hand.cards, qq("pending.cardToGiveTo", { player: data.issuer.id }), data.serializedCardAndBox, true, false)).selected[0] as LootCard;
@@ -3419,6 +3424,8 @@ export function putThisIntoDiscardEffect(game: Game): SyncEffectFunction {
 export function killMonsterEffect(game: Game): SyncEffectFunction {
     return (data: EffectData) => {
         const targetMonster = data.next as Monster;
+        if(!targetMonster || !(targetMonster instanceof Monster) || targetMonster.isDead)
+            return false;
         game.entityHandler.kill(data.issuer, targetMonster, data.cardAndBox);
         return true;
     };
@@ -3427,7 +3434,8 @@ export function killMonsterEffect(game: Game): SyncEffectFunction {
 export function enterPlayBecomeSoulEffect(game: Game): SyncEffectFunction {
     return (data: EffectData) => {
         if (data.issuer instanceof Player === false) return false;
-        game.cardHandler.removeInPlay(data.issuer, data.it as ItemCard);
+        if(!game.cardHandler.removeInPlay(data.issuer, data.it as ItemCard))
+            return false;
         if(data.it instanceof LootCard === true)
             data.it.afterEffect = "nothing"; // card placement is handled by the effect itself.
         data.it.soul = 1;

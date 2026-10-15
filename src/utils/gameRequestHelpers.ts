@@ -198,6 +198,7 @@ export async function executeEndTurnRequest(
   game: Game,
   player: Player,
 ): Promise<void> {
+  game.actions.canEndTurn(player, true);
   game.addToHistory({ type: "EndTurn", issuer: player.id });
   await game.actions.nextTurn(player);
 }
@@ -364,13 +365,13 @@ export function executeDebugChangeDiceResultRequest(
   const dice = game.stack.elements.find(e => e.stackId === payload.dice.id);
   if( dice === undefined || dice instanceof DiceRoll === false)
     return;
-  game.actions.debugChangeDiceResult(player, dice, payload.value);
-
   game.addToHistory({
     type: "DebugChangeDiceResult",
     payload,
     issuer: player.id,
   });
+  game.actions.debugChangeDiceResult(player, dice, payload.value);
+
 }
 
 export function executeDebugPutRoomRequest(
@@ -389,12 +390,11 @@ export function executeDebugPutRoomRequest(
   if(idx < 0 || idx >= game.rooms.activeRooms.length)
     throw new GameError("", toSerializedTranslation("error.invalidCardPosition"));
 
-  game.rooms?.forceRoomAtSlot(0, room);
   game.addToHistory({
     type: "DebugPutRoom",
     payload,
     issuer: player.id,
   });
-
+  game.rooms?.forceRoomAtSlot(0, room);
   game.dispatch();
 }

@@ -136,8 +136,9 @@ export function preventDamageToCurrentPlayerAndDealToRandomPlayerEffect(game: Ga
         let offDamage: (() => void) | null = null;
 
         offDamage = game.emitter.on("on:damage:would-take", (eventData: OnDamageWouldTakeData) => {
-            const { eventIssuer, target } = eventData;
+            const { eventIssuer, target, source } = eventData;
             if (data.issuer !== target) return;
+            if( source instanceof DiceRoll === false) return;
             if(game.currentPlayer !== eventIssuer) return;
             const effect: EffectFunction = (effectData: EffectData) => {
                 eventData.damageArray[0] = 0;
@@ -537,23 +538,29 @@ export function rollAndMayChangeNextRollForThis(game: Game): SyncParsedEffect {
             let offRoll: (() => void) | null = null;
 
             const savedRoll = game.rollDice(data.issuer, data.it);
-            offRoll = game.emitter.on("on:dice:being-rolled", ({ diceRoll }) => {
-                const effect:EffectFunction = async (effectData: EffectData): Promise<boolean> => {
-                    if(!(data.issuer instanceof Player))
-                        throw new GameError("rollAndMayChangeNextRollForThis issuer should be a player.", toSerializedTranslation("error.behaviorError", {error: "rollAndMayChangeNextRollForThis issuer should be a player."}));
-                    if (diceRoll.issuer !== data.issuer) return false;
-                    if( savedRoll === diceRoll) return false;
-                    if(savedRoll.value !== diceRoll.value)
-                    {
-                        const newValue = (await data.selectAndRecord(game, data.issuer, 1, 1, [diceRoll.value, savedRoll.value], toSerializedTranslation("pending.resultOfDiceRoll"), data.serializedCardAndBox, true, true)).selected[0]!;
-                        diceRoll.value = newValue;
+            const effect = (effectData: EffectData): boolean => {
+                offRoll = game.emitter.on("on:dice:being-rolled", ({ diceRoll }) => {
+                    if(diceRoll.card === data.it)
+                        return;
+                    const effect:EffectFunction = async (effectData: EffectData): Promise<boolean> => {
+                        if(!(data.issuer instanceof Player))
+                            throw new GameError("rollAndMayChangeNextRollForThis issuer should be a player.", toSerializedTranslation("error.behaviorError", {error: "rollAndMayChangeNextRollForThis issuer should be a player."}));
+                        if (diceRoll.issuer !== data.issuer) return false;
+                        if( savedRoll === diceRoll) return false;
+                        if(savedRoll.value !== diceRoll.value)
+                        {
+                            const newValue = (await data.selectAndRecord(game, data.issuer, 1, 1, [diceRoll.value, savedRoll.value], toSerializedTranslation("pending.resultOfDiceRoll"), data.serializedCardAndBox, true, true)).selected[0]!;
+                            diceRoll.value = newValue;
+                        }
+                        return true;
                     }
-                    return true;
-                }
-                addPassiveEffectToStack(game, effect, data, "Choose the result of this dice roll.");
-                offRoll!();
-                offEndTurn!();
-            });
+                    addPassiveEffectToStack(game, effect, data, "Choose the result of this dice roll.");
+                    offRoll!();
+                    offEndTurn!();
+                });
+                return true;
+            };
+            savedRoll.attachEffect(effect, data.it, data.targets, data.issuer);
 
             offEndTurn = game.emitter.on("on:turn:end", ({ eventIssuer }) => {
                 offRoll!();
@@ -1744,30 +1751,35 @@ export function onAnyEventEffect(
 
 export function copyAbilitiesFromGoldCounterItemsEffect(game: Game): SyncEffectFunction {
     return (data: EffectData) => {
-        // console.log("Activating copyAbilitiesFromGoldCounterItemsEffect", data.issuer.id);
         if(!(data.it instanceof ItemCard)) return false;
         if(!data.issuer || !(data.issuer instanceof Player)) return false;
-        const goldenItems = game.visibleItems.filter(item => item.counters.value("golden") > 0);
+        const issuer = data.issuer;
+        const goldenItems = issuer.inPlay.filter(item => item !== data.it && item.counters.value("golden") > 0);
         data.it.swapEffectInterfaces();
         for (const item of goldenItems) {
-            game.cardHandler.gainAbilities(data.issuer, data.it, item);
+            game.cardHandler.gainAbilities(issuer, data.it, item);
         }
         let offCounterChange: (() => void) | null = null;
+
         offCounterChange = game.emitter.on("on:counter:modified", ({ eventIssuer, card, counterName, previousValue, newValue }) => {
             if (counterName !== "golden") return;
             if(!(data.it instanceof ItemCard)) return;
-            if(!data.issuer || !(data.issuer instanceof Player)) return false;
             if(!(card instanceof ItemCard)) return;
+            if (card === data.it || !issuer.inPlay.includes(card)) return;
             if (card.counters.value("golden") > 0 && previousValue === 0) {
-                game.cardHandler.gainAbilities(data.issuer, data.it, card);
+                game.cardHandler.gainAbilities(issuer, data.it, card);
             }
             else if(newValue === 0 && previousValue > 0) {
-                const toRemove = (data.it.tags.copiedCards as ItemCard[]).find(c => c.slug === card.slug);
-                toRemove?.cleanup();
-                data.it.tags.copiedCards = (data.it.tags.copiedCards as ItemCard[]).filter(c => c !== toRemove);
+                const copiedCards = (data.it.tags.copiedCards as ItemCard[] | undefined) ?? [];
+                const toRemove = copiedCards.find(c => c.tags.copiedFrom === card);
+                if (toRemove) {
+                    toRemove.parentCard = null;
+                    toRemove.cleanup();
+                    data.it.tags.copiedCards = copiedCards.filter(c => c !== toRemove);
+                }
             }
         });
-        
+
         data.it.cleaners.push(() => {
             data.it.swapEffectInterfaces();
             offCounterChange?.();
@@ -1780,7 +1792,7 @@ export function copyAbilitiesFromGoldCounterItemsEffect(game: Game): SyncEffectF
 export function giveCounterToAnotherItemOnEnterPlayEffect(game: Game, counterType: CounterType): AsyncEffectFunction {
     return async (data: EffectData) => {
         if (data.issuer instanceof Player === false) return false;
-        const itemToGiveCounter = (await data.selectAndRecord(game, data.issuer, 1, 1, data.issuer.inPlay.filter(item => item !== data.it && !item.eternal), toSerializedTranslation("pending.itemToGiveGoldCounterTo"), data.serializedCardAndBox, true)).selected[0]!;
+        const itemToGiveCounter = (await data.selectAndRecord(game, data.issuer, 1, 1, data.issuer.inPlay.filter(item => item !== data.it && !item.eternal && item.slug !== "r-golden_trinket"), toSerializedTranslation("pending.itemToGiveGoldCounterTo"), data.serializedCardAndBox, true)).selected[0]!;
         if(!itemToGiveCounter)
             return false;
         game.cardHandler.addToCounter(data.issuer, itemToGiveCounter, counterType, 1);
@@ -2008,6 +2020,7 @@ export function copyNextNonTrinketNonAmbushLootThisTurnEffect(game: Game): SyncE
                 try{
                     const newTargets = await TargetBuilder.buildTargetsOnResolve(game, eventIssuer, card, "tap");
                     const copy = game.cardHandler.copyCard(card, eventIssuer) as LootCard; 
+                    copy.parentCard = data.it.slug;
                     copy.afterEffect = "nothing";
                     const lootCardEffect = new LootCardEffect(eventIssuer, copy, newTargets);
                     game.addToStack(lootCardEffect);
@@ -2966,31 +2979,43 @@ export function preventDamageAndDealOnDeathEffect(game: Game, damagePrevented: n
     return (data: EffectData) => {
         let offDamage: (() => void) | null = null;
         let offDeath: (() => void) | null = null;
+        let offEndTurn: (() => void) | null = null;
+        if(!(data.issuer instanceof Player)) return false;
+        const target = data.next;
+        const temp: TemporaryEffect = getTemporaryEffect(data);
 
         const cleanup = (): void => {
             offDamage?.();
             offDeath?.();
+            offEndTurn?.();
             offDamage = null;
             offDeath = null;
+            offEndTurn = null;
+            target.removeTemporaryEffect(temp);
         };
-        if(!(data.issuer instanceof Player)) return false;
-
-        const target = data.next;
         if(!target || !(target instanceof Player)) return false;
         const newData = new EffectData(data.it, () => target, [], data.visualEffectBox);
         preventNextDamageUpToEffect(damagePrevented, game)(newData); // Reuse the preventNextDamageUpToEffect to handle the prevention part
         // Listen for death of the player from this damage
+        
+        target.addTemporaryEffect(temp);
         offDeath = game.emitter.on("on:death:before-penalty", (deathEventData: OnDeathBeforePenaltyData) => {
             const { eventIssuer } = deathEventData;
             if (target !== eventIssuer) return;
-
-            for(const player of game.players) {
-                if(player !== data.issuer && !player.isDead && player !== eventIssuer) {
-                    game.entityHandler.dealDamage(data.issuer, player, data.cardAndBox, damageAmount);
+            const effect = () => {
+                for(const player of game.players) {
+                    if(player !== data.issuer && !player.isDead && player !== eventIssuer) {
+                        game.entityHandler.dealDamage(data.issuer, player, data.cardAndBox, damageAmount);
+                    }
                 }
+                return true;
             }
-
+            addPassiveEffectToStack(game, effect, data, "deal damage to all other players on death");
             cleanup(); // One-shot: remove listeners after triggering
+        });
+
+        offEndTurn = game.emitter.on("till:turn:end", () => {
+            cleanup();
         });
 
         // Store cleanup function on the card for when it's removed/destroyed
@@ -3294,6 +3319,10 @@ export function startingItemEffect(game: Game, x: number): SyncEffectFunction {
             offEffect?.();
             offEffect = null;
             return true;
+        });
+        data.it.cleaners.push(() => {
+            offEffect?.();
+            offEffect = null;
         });
         return true;
     };

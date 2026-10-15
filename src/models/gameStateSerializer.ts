@@ -8,6 +8,7 @@ import { TargetBuilder } from "@/models/targetBuilder";
 // import type { DetailedState, IdentifierType, InPlayCard, InPlayMeCard, PendingSelection } from "@/shared/api";
 import * as api from "@/shared/api";
 import { toSerializedTranslation } from "@/utils/translation";
+import { getMainTitle } from "./gameStats";
 
 export class GameStateSerializer {
   private game: Game;
@@ -69,7 +70,7 @@ export class GameStateSerializer {
       name: player.id,
       color: player.color,
       team: player.team,
-      character: this.serializeMeCharacter(player, player.character),
+      ...(this.game._playersWithRandomCharacter.includes(player) ? {} : {character: this.serializeMeCharacter(player, player.character)}),
       handSize: player.hand.cards.length,
       souls: player.totalSouls,
       soulCards: player.souls.map((c) => c.jsonAPI),
@@ -78,12 +79,12 @@ export class GameStateSerializer {
       remainingLootPlay: player.remainingLootPlay,
       isEngagedInPurchase: player.isEngagedInPurchase,
       
-      hand: player.hand.cards.map((c) => c.jsonAPI),
+      hand: player.hand.cards.map((c) => {return {...(c.jsonAPI), canBePlayed: TargetBuilder.validTargetExists(this.game, player, c, "tap")}}),
       inPlay: player.inPlay.map((c) => this.serializedMyInPlayItems(c, player)).concat(player.curses.map((c) => this.serializeCurse(player, c, player))),
       numberOfCardsOverMaxHandSize: Math.max(0, player.hand.cards.length - player.maxHandSize),
       pendingSelection: this.serializedPendingSelection(player.id),
       capabilities: {
-        endTurn: this.game.actions.canEndTurn(player),
+        endTurn: this.game.actions.canEndTurn(player, false),
         declareAttack: this.game.actions.canDeclareAttack(player),
         declarePurchase: this.game.actions.canDeclarePurchase(player),
         rollDice: this.game.actions.canRollDice(player),
@@ -104,7 +105,7 @@ export class GameStateSerializer {
   public serializedMyInPlayItems(item: ItemCard, owner: Player): api.InPlayMeCard {
     return {
       ...this.serializeOtherInPlay(owner, item, owner),
-      effects: item.activeEffectList,
+      effects: item.activeEffectList.filter(e => TargetBuilder.validTargetExists(this.game, owner, item, e.index, e.visualEffectBox.startIndex) === true),
     };
   }
 
@@ -181,7 +182,7 @@ export class GameStateSerializer {
           name: p.id,
           color: p.color,
           team: p.team,
-          character: this.serializeCharacter(me, p.character, p),
+          ...(this.game._playersWithRandomCharacter.includes(p) ? {} : {character: this.serializeCharacter(me, p.character, p)}),
           handSize: p.hand.cards.length,
           hand: p.handRevealed ? p.hand.cards.map((c) => c.jsonAPI) : undefined,
           inPlay: p.inPlay.map((c) => this.serializeOtherInPlay(me, c, p)).concat(p.curses.map((c) => this.serializeCurse(me, c, p))),
@@ -325,6 +326,7 @@ export class GameStateSerializer {
             ... (m.card.jsonAPI),
             counter: m.card.counters.getIfDefined("normal"),
             ...(m.monster ? {
+              ...(m.monster.card.counters.json !== undefined ? {counters: m.monster.card.counters.json} : {}),
               stats: {
                 healthPoints: m.monster.currentHealthPoints,
                 attackPoints: this.game.entityHandler.getAttack(m.monster),
@@ -334,8 +336,8 @@ export class GameStateSerializer {
                   targetable: this.game.actions.canDeclareAttackOnEntity(player, m.monster, false),
                 },
                 temporaryEffect: m.monster.temporaryEffects,
-              }
-
+              },
+              indomitable: m.card.indomitable,
             } : {})
           },
           covered: m.covered,
@@ -343,5 +345,16 @@ export class GameStateSerializer {
       };
     }
 
-
+    public serializeEndGame(winnerTeam: api.Team | null): api.GameOverBroadcast {
+      const titles = getMainTitle(this.game.players);
+      return {
+        type: "gameOver",
+        data: this.game.players.map((p) => ({
+          player: this.serializedOtherPlayers(p, [p])[0]!,
+          playerStats: p.stats,
+          type: p.team === winnerTeam ? "win" : "lose",
+          title: titles[p.id]!,
+        })),
+      };
+    }
 }

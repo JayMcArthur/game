@@ -86,6 +86,24 @@ describe("Encounters", () => {
         expect(game.encounters.visible[0]?.slug).toBe(monster.card.slug);
     });
 
+    it("Obtaining a covered monster reveals it and refreshes the active entity", async () => {
+        const coveredMonster = game.encounters.monsterIn(0)!;
+        getAndAddTopMonsterCard(game, "b2-mom");
+        game.encounters.draw(0);
+        const topCard = game.encounters.visible[0]!;
+        const topMonster = game.encounters.monsterIn(0)!;
+
+        expect(topMonster.card).toBe(topCard);
+
+        const obtainedCard = game.encounters.obtainCard(topCard.slug, topCard.globalId);
+
+        expect(obtainedCard).toBe(topCard);
+        expect(game.encounters.visible[0]).toBe(coveredMonster.card);
+        expect(game.encounters.monsterIn(0)?.card).toBe(coveredMonster.card);
+        expect(game.encounters.monsterIn(0)).not.toBe(topMonster);
+        verifyMonsters(game);
+    });
+
      it("Drawing event replaces it correctly", async () => {
         verifyMonsters(game);
         const monster = game.encounters.monsterIn(0)!;

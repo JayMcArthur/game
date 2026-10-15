@@ -179,6 +179,41 @@ describe("Four Souls+2 Eternal Items", () => {
             expect(game.monsters.map(m => m.card.slug).includes(mob)).toBe(false);
     });
 
+    it("r-the_capricious (eternal) remove previous passive", async () => {
+        const setup = await setupTestGame({
+                    characters: ["r-the_capricious", "b2-samson"],
+                    monsters: ["b2-fly", "b2-fatty"],
+                    monsterDeck: ["b2-red_host", "b2-pooter", "b2-gurdy"],
+                    treasureDeck: ["b2-flush", "fsp2-abaddon"],
+                    playerCount: 2
+                });
+        game = setup.game;
+        player1 = setup.player1;
+        player2 = setup.player2!;
+        game.obtainCard(game.shop.itemsInShop[0]!.slug);
+        game.select = async (_issuer, _min, _max, _opts, _optional) => ({
+            selected: [_opts[0]!],
+            remaining: []
+        });
+        expect(player1.character!.slug).toBe("r-the_capricious");
+        const eternal = player1.inPlay[0]!;
+        expect(eternal.slug).toBe("r-glitch");
+        await game.actions.resolveStack();
+        expect((eternal.tags.copiedCards as ItemCard[]).map((c) => c.slug).includes("fsp2-abaddon")).toBe(true);
+        expect(game.entityHandler.getAttack(player1)).toBe(4);
+        await game.endTurn();
+        await game.resolveEntireStack();
+        expect(game.stack.isEmpty()).toBe(true);
+        expect(game.entityHandler.getAttack(player1)).toBe(4);
+        await game.endTurn();
+        await game.actions.resolveStack();
+        await game.actions.resolveStack();
+        await game.actions.resolveStack();
+        await game.actions.resolveStack();
+        expect(game.stack.isEmpty()).toBe(true);
+        expect(game.entityHandler.getAttack(player1)).toBe(4);
+    });
+
     it("r-the_capricious (character)", async () => {
         const setup = await setupTestGame({
                     characters: ["r-the_capricious", "b2-samson"],
@@ -194,12 +229,11 @@ describe("Four Souls+2 Eternal Items", () => {
         expect(player1.character!.slug).toBe("r-the_capricious");
         const eternal = player1.inPlay[0]!;
         expect(eternal.slug).toBe("r-glitch");
-
-        expect(player1.remainingLootPlay).toBe(10);
+        expect(player1.remainingLootPlay).toBe(0);
         game.cardHandler.recharge(player1.character);
         await game.activateItem(player1, player1.character, ["Play an additional loot card this turn."], "tap");
         await game.actions.resolveStack();
-        expect(player1.remainingLootPlay).toBe(11);
+        expect(player1.remainingLootPlay).toBe(1);
 
         const shopItem = game.shop.itemsInShop[0]!;
         game.cardHandler.recharge(player1.character);

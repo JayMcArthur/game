@@ -298,6 +298,8 @@ export class GameParameters {
   readonly nbSoulsToWin: NumericGameParameter;
   readonly resolveCooldown: NumericGameParameter;
   readonly nbItemsInShop: NumericGameParameter;
+  readonly mulliganCharacterNbOptions: NumericGameParameter;
+  readonly mulliganCharacterReroll: BooleanGameParameter;
   readonly timer: NumericGameParameter;
   readonly nbRooms: NumericGameParameter;
   readonly nbEncounters: NumericGameParameter;
@@ -406,6 +408,8 @@ export class GameParameters {
     this.bsoul = new DeckParameter("bsoul", 0, 100, onChange, this._filter);
     this.room = new DeckParameter("room", 0, 100, onChange, this._filter);
     this.nbItemsInShop = new NumericGameParameter(0, 2, 6, onChange);
+    this.mulliganCharacterNbOptions = new NumericGameParameter(1, 1, 5, onChange);
+    this.mulliganCharacterReroll = new BooleanGameParameter(false, onChange);
     this.nbRooms = new NumericGameParameter(1, 1, 1, onChange);
     this.nbEncounters = new NumericGameParameter(1, 2, 6, onChange);
     this.timer = new NumericGameParameter(0, 0, 100, onChange);
@@ -551,6 +555,20 @@ export class GameParameters {
         value: this.nbItemsInShop.value,
         translationKey: toSerializedTranslation(
           "startStep.gameParams.nbItemsInShop",
+        ),
+      },
+      mulliganCharacterNbOptions: {
+        text: "Number of mulligan options for random characters",
+        value: this.mulliganCharacterNbOptions.value,
+        translationKey: toSerializedTranslation(
+          "startStep.gameParams.mulliganCharacterNbOptions",
+        ),
+      },
+      mulliganCharacterReroll: {
+        text: "Allow rerolling of mulligan options for random characters",
+        value: this.mulliganCharacterReroll.value,
+        translationKey: toSerializedTranslation(
+          "startStep.gameParams.mulliganCharacterReroll",
         ),
       },
       timer: {
@@ -791,6 +809,8 @@ export class GameParameters {
     this.nbSoulsToWin.reset();
     this.resolveCooldown.reset();
     this.nbItemsInShop.reset();
+    this.mulliganCharacterNbOptions.reset();
+    this.mulliganCharacterReroll.reset();
     this.timer.reset();
     this.nbRooms.reset();
     this.nbEncounters.reset();

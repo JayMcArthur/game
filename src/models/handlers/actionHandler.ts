@@ -6,7 +6,7 @@ import type { Entity } from "../entities/entity";
 import { Monster } from "../entities/monster";
 import { Animated } from "../entities/animated";
 import { getAttackRollEffect } from "../effects/activeEffect";
-import { AttackRollData, DamageOnStack, DiceRoll } from "../stackElement";
+import { AttackRollData, DamageOnStack, DiceRoll, LootStepOnStack } from "../stackElement";
 import { Card, ItemCard, LootCard, MonsterCard, MonsterType, RoomCard, TreasureCard } from "../cards";
 import { LootCardEffect } from '../stackElement';
 import { TargetBuilder } from "../targetBuilder";
@@ -76,6 +76,7 @@ export class ActionHandler {
       player.engageInCombat();
       this.game.entityHandler.addEntityInCombat(player);
       this.game.emit("on:attack:declared", { eventIssuer: player });
+      player.stats.nbAttacksDeclared++;
       this.game.dispatch();
     }
   
@@ -179,7 +180,10 @@ export class ActionHandler {
             );
           
           if(attackTopDeck)
+          {
             this.game.emit("on:attack:declared:topdeck", { eventIssuer: player, drawInIndex });
+            player.stats.nbAttackTopDeck++;
+          }
           this.game.dispatch();
         });
       }
@@ -281,16 +285,19 @@ export class ActionHandler {
       this.game.assert.stackNotEmpty();
       this.game.assert.noPendingSelection();
     }
-    if(this.game.stack.peek() instanceof DiceRoll)
+    const elem = this.game.stack.peek();
+    if (elem === undefined) return;
+    if(elem instanceof DiceRoll)
       return this.game.resolveDiceRoll();
-    if(this.game.stack.peek() instanceof DamageOnStack)
+    if(elem instanceof DamageOnStack)
       return this.game.entityHandler.resolveDamageOnStack();
-    const elem = this.game.stack.resolve();
-    if (!elem) return;
+    if(elem instanceof LootStepOnStack === false) // loot step handle it's stack element on its own.
+     this.game.stack.resolve();
 
     await elem.onResolve();
     // Add to history
-    this.game.addToHistory(elem.json);
+    if(elem instanceof LootStepOnStack === false) // loot step handle it's history element on its own.
+      this.game.addToHistory(elem.json);
     if (elem instanceof LootCardEffect && elem.card instanceof LootCard)
       this.game.cardHandler.handleLootCardEffectResolution(elem);
     this.game.dispatch();
@@ -309,6 +316,7 @@ export class ActionHandler {
 
     const effectOnStack = await room.tryActivateEffect(targets, effectId);
     this.game.addToStack(effectOnStack);
+    player.stats.nbRoomActivated++;
     return true;
   }
 
@@ -420,6 +428,7 @@ export class ActionHandler {
         targets: targets,
         stackId: idx
       });
+      player.stats.nbLootPlayed++;
       return `You have played the card: ${playedCard.name} to your in-play area.\n`;
     }
   
@@ -440,7 +449,8 @@ export class ActionHandler {
     }
     if (!item.activeEffectList.map((e) => e.index).includes(effectId))
       throw new GameError("Item does not have the specified effect ID.", toSerializedTranslation("error.itemDoesNotHaveEffectId"));
-
+    if(effectId === "tap")
+      player.stats.nbItemActivated++;
     return this.game.activateItem(player, item, choices, effectId);
   }
 
@@ -473,7 +483,7 @@ export class ActionHandler {
       !(card instanceof ItemCard) || !card.activeEffectList.some(e => 
           (e.index !== "tap" && 
             TargetBuilder.verifyPaiementCanBeMade(this.game, owner, card, e.description) === true) && 
-              TargetBuilder.validTargetExists(this.game, owner, card, e.index) === true)
+              TargetBuilder.validTargetExists(this.game, owner, card, e.index, e.visualEffectBox.startIndex) === true)
     )) {
       if(card.activeEffectList.length === 1 && card.activeEffectList[0]!.index === "tap" && !card.charged)
         return toSerializedTranslation("capability.notCharged");
@@ -484,7 +494,7 @@ export class ActionHandler {
         if(card.activeEffectList.length === 1){
           return TargetBuilder.validTargetExists(this.game, owner, card, card.activeEffectList[0]!.index);
         }
-        else if(!card.activeEffectList.some(e => TargetBuilder.validTargetExists(this.game, owner, card, e.index) === true && (card.charged || e.index !== "tap")))
+        else if(!card.activeEffectList.some(e => TargetBuilder.validTargetExists(this.game, owner, card, e.index, e.visualEffectBox.startIndex) === true && (card.charged || e.index !== "tap")))
           return toSerializedTranslation("capability.noValidTargets");
       }
     return true;
@@ -541,6 +551,7 @@ export class ActionHandler {
     if(force || this.canPurchase(player) !== true)
       {
         player.purchaseEnded();
+        player.stats.nbPurchaseCancelled++;
         this.game.dispatch();
       }
     else 
@@ -605,6 +616,9 @@ export class ActionHandler {
       });
       player.purchaseEnded();
       this.game.dispatch();
+      player.stats.nbPurchases++;
+      if(index === "top")
+        player.stats.nbPurchaseTopDeck++;
       return `Purchase successful. You have now ${player.coins} coins.\n`;
     } else {
       throw new GameError(

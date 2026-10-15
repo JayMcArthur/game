@@ -1,12 +1,12 @@
 import { shuffle } from "@/utils/auxiliary";
-import { type DeckName, type SelectionItem, type TargetSelectorResponse, type SerializedTranslation, type Capability, serializedTranslationSchema, type SerializedChooseOne } from "../shared/api";
+import { type DeckName, type SelectionItem, type TargetSelectorResponse, type SerializedTranslation, type Capability, serializedTranslationSchema, type SerializedChooseOne, type CardEffect, selectionItemSchema } from "../shared/api";
 import { Card, ItemCard, LootCard, type TargetsSelector } from "./cards";
 import { Entity } from "./entities/entity";
 import { type Game } from "./game";
 import { GameError } from "@/models/GameError";
 import { Player } from "./entities/player";
 import { isStackElement } from "./stack";
-import { isChooseOneOptions, type ChooseOneOptions } from "./targetSelector";
+import { isCardEffectOptions, isChooseOneOptions, type ChooseOneOptions } from "./targetSelector";
 import { toSerializedTranslation } from "@/utils/translation";
 import { EffectTextNumber } from "./effectTextNumber";
 
@@ -32,6 +32,10 @@ import { EffectTextNumber } from "./effectTextNumber";
  * // Continue until complete
  * ```
  */
+
+function isTrinketBeingPlayed(item: Card): boolean{
+    return item instanceof LootCard && item.trinket && item.getActiveEffect() === undefined
+}
 export class TargetBuilder {
     private static shouldAutofillSelector(selector: TargetsSelector, possibleTargets: any[]): boolean {
         return selector.min === possibleTargets.length && selector.max === possibleTargets.length;
@@ -144,11 +148,12 @@ export class TargetBuilder {
                 complete: boolean,
                 isChooseOne: boolean,
             } {
+
         if(!bypassAsserPendingSelection)
             game.assert.noPendingSelection();
         if(!item)
             throw new GameError(`Item not found.`, toSerializedTranslation("error.itemNotFound"));
-        if(item instanceof LootCard && item.trinket)
+        if(isTrinketBeingPlayed(item))
             return this.completeResponse();
         if(throwIfNotCharged && effectId === "tap" && !item.charged)
             throw new GameError(`Item ${item.name} is not charged.`, toSerializedTranslation("capability.notCharged"));
@@ -161,7 +166,6 @@ export class TargetBuilder {
         if (!selector) {
             return TargetBuilder.completeResponse();
         }
-
         // Walk through choices using for loop
         let choicesProcessed = 0;
         for (let i = 0; i < partialChoices.length; i++) {
@@ -183,11 +187,12 @@ export class TargetBuilder {
             if (possibleTargets.length > 0 && isChooseOneOptions(possibleTargets[0])) {
                 // Choose-one: find the chosen option
                 const chosenOption = (possibleTargets as ChooseOneOptions[]).find(
-                    opt => opt.description === (choice.payload as SerializedChooseOne).description
+                    opt => opt.visualEffectBox.startIndex === (choice.payload as SerializedChooseOne).visualEffectBox.startIndex
+                    && opt.visualEffectBox.endIndex === (choice.payload as SerializedChooseOne).visualEffectBox.endIndex
                 );
 
                 if (!chosenOption) {
-                    throw new GameError(`Invalid choose-one option: ${choice}`, toSerializedTranslation("error.invalidChooseOneOption"));
+                    throw new GameError(`Invalid choose-one option: ${JSON.stringify(choice.payload, null, 2)}`, toSerializedTranslation("error.invalidChooseOneOption"));
                 }
                 rootSelectors.splice(selectorIndex + 1, 0, ...chosenOption.admissibleTargets);
                 selectorIndex++;
@@ -231,12 +236,18 @@ export class TargetBuilder {
         }
 
         // Get the next selector to display
-        const possibleTargets = selector.selector(player, item);
+        let possibleTargets = selector.selector(player, item);
         
         // Check if this is a choose-one selector
         const isChooseOne = possibleTargets.length > 0 && isChooseOneOptions(possibleTargets[0]);
 
         if (isChooseOne) {
+            // Filter possibleTargets to only include choose-one options with valid targets.
+            possibleTargets = (possibleTargets as ChooseOneOptions[]).filter(option => {
+                const nextSelector = this.getNextSelectorRaw(game, player, item, [...partialChoices, {type: "chooseOne", payload: {description: option.description, card: option.card.jsonAPI, visualEffectBox: option.visualEffectBox}}], effectId, throwIfNotCharged, true);
+                return nextSelector.complete
+                || (option.admissibleTargets && option.admissibleTargets.length > 0);
+            });
             // Return choose-one option descriptions
             return {
                 description: selector.description,
@@ -324,6 +335,9 @@ export class TargetBuilder {
             if (typeof option === 'object' && option !== null && isChooseOneOptions(option)) {
                 return {type: "chooseOne", payload: {description: option.description, card: option.card.jsonAPI, visualEffectBox: option.visualEffectBox}};
             }
+            if (typeof option === 'object' && option !== null && isCardEffectOptions(option)) {
+                return {type: "cardEffect", payload: {card: option.card.jsonAPI, visualEffectBox: option.visualEffectBox, index: option.index}};
+            }
             if (typeof option === 'object' && option !== null && 'slug' in option && option instanceof Card) {
                 return { payload: option.jsonAPI, type: "card" };
             }
@@ -363,6 +377,9 @@ export class TargetBuilder {
             if(serializedTranslationParsed.success) {
                 return {type: "serializedTranslation", payload: serializedTranslationParsed.data};
             }
+            const wasAlreadySelectionItem = selectionItemSchema.safeParse(option).data;
+            if(wasAlreadySelectionItem !== undefined)
+                return wasAlreadySelectionItem;
             if (Array.isArray(option) || typeof option === 'object') {
                 try {
                     return {type: "array", payload: TargetBuilder.convertToSelectionItems(option)};
@@ -370,6 +387,7 @@ export class TargetBuilder {
                     return {type: "unknown", payload: null};
                 }
             }
+            
             return {type: "unknown", payload: null};
             // throw new GameError("Not implemented yet", toSerializedTranslation("error.behaviorError", { error: "Not implemented yet"}));
         });
@@ -391,7 +409,7 @@ export class TargetBuilder {
         switch(identifier.type) {
             case "card":
                 return possibleTargets.find(t =>
-                    t && t.slug === identifier.payload.slug &&
+                    t && (t as Card).jsonAPI.slug === identifier.payload.slug &&
                     (identifier.payload.globalId === undefined || t.globalId === identifier.payload.globalId)
                 );
             case "player":
@@ -405,6 +423,8 @@ export class TargetBuilder {
                 return possibleTargets.find(t => t && t._type === identifier.payload);
             case "chooseOne":
                 return (possibleTargets as SerializedChooseOne[]).find(t => t && t.description === identifier.payload.description)
+            case "cardEffect":
+                return (possibleTargets as CardEffect[]).find(t => t && t.index === identifier.payload.index && t.visualEffectBox.startIndex === identifier.payload.visualEffectBox.startIndex && t.visualEffectBox.endIndex === identifier.payload.visualEffectBox.endIndex);
             case "number":
             case "string":
             case "boolean":
@@ -437,6 +457,8 @@ export class TargetBuilder {
                 } catch {
                     return undefined;
                 }
+            case "character":
+                return identifier;
             default:
                 return undefined;
         }
@@ -467,7 +489,7 @@ export class TargetBuilder {
         game.assert.noPendingSelection();
         if(!item)
             throw new GameError(`Item not found.`, toSerializedTranslation("error.itemNotFound"));
-        if(item instanceof LootCard && item.trinket)
+        if(isTrinketBeingPlayed(item))
             return [];
         const rootSelectors = [...item.getEffectTarget(effectId)];
         const result: any[] = [];
@@ -538,11 +560,12 @@ export class TargetBuilder {
         game: Game,
         player: Player,
         item: ItemCard,
-        effectId: number | "tap"
+        effectId: number | "tap",
+        partialTargets: any[] | undefined = undefined,
     ): Promise<any[]> {
         if(!item)
             throw new GameError(`Item not found or has no active effect.`, toSerializedTranslation("error.itemNotFoundOrNoActiveEffect"));
-        if(item instanceof LootCard && item.trinket)
+        if(isTrinketBeingPlayed(item))
             return [];
         if(effectId === "tap"){
             const activeEffect = item.getActiveEffect();
@@ -555,7 +578,7 @@ export class TargetBuilder {
             throw new GameError(`Effect issuer is not a player.`, toSerializedTranslation("error.effectIssuerNotPlayer"));
 
         // The next target is expected to be an array of targets for the copied effect
-        const targets: any[] = [];
+        const targets: any[] = partialTargets === undefined ? [] : partialTargets;
         let options = TargetBuilder.getNextSelectorRaw(game, player, item, targets, effectId, false);
         while(!options.complete)
             {
@@ -642,11 +665,12 @@ export class TargetBuilder {
         game: Game,
         player: Player,
         item: ItemCard,
-        effectId: number | "tap" = "tap"
+        effectId: number | "tap" = "tap",
+        visualEffectId?: number
     ): Capability {
         if(!item)
             return toSerializedTranslation("error.itemNotFound");
-        if(item instanceof LootCard && item.trinket)
+        if(isTrinketBeingPlayed(item))
             return true;
         // console.log(`Checking valid targets for item: ${item.name}, effectId: ${effectId} descr ${item.activeEffectList[effectId as number]?.description}`);
         if(effectId !== "tap")
@@ -658,6 +682,12 @@ export class TargetBuilder {
             }
         // The next target is expected to be an array of targets for the copied effect
         let targets: any[] = [];
+        if (visualEffectId !== undefined) {
+            const selectedEffect = item.getEffectIdAndChooseOneChoiceFromSeparatorId(visualEffectId);
+            if (selectedEffect.effectId !== effectId)
+                return toSerializedTranslation("capability.noValidTargets");
+            targets = selectedEffect.choice?.map(payload => ({ type: "chooseOne", payload })) ?? [];
+        }
         let options = TargetBuilder.getNextSelector(game, player, item, targets, effectId, false, true);
         const backtrackingIndices: number[] = [];
         while(!options.complete)
@@ -721,46 +751,69 @@ export class TargetBuilder {
             // The next target is expected to be an array of targets for the copied effect
             let targets: any[] = [];
             let options = TargetBuilder.getNextSelector(game, player, item, targets, effectId, false, true);
-            const backtrackingIndices: number[] = [];
-            while(!options.complete)
-            {
-                // pick a number uniformly between options.min and Math.min(options.max, options.options.length)
-                const upper = Math.min(options.max, options.options.length);
-                const range = upper - options.min + 1;
-                const nbToSelect = options.min + (range > 0 ? Math.floor(Math.random() * range) : 0);
-                const shuffledOptions = [...options.options];
-                shuffle(Math.random, shuffledOptions);
-                const selection = shuffledOptions.slice(0, nbToSelect);
-                if(selection.length > options.max || selection.length < options.min)
-                {
-                    if(backtrackingIndices.length === 0)
-                        break;
-                    const lastIndex = backtrackingIndices.pop()!;
-                    const prevChooseOneOption = targets[lastIndex].description;
-                    targets = targets.slice(0, lastIndex);
+            const backtrackingFrames: { targetIndex: number; options: SelectionItem[]; nextOptionIndex: number }[] = [];
+            const tryBacktrack = (): boolean => {
+                while (backtrackingFrames.length > 0) {
+                    const frame = backtrackingFrames[backtrackingFrames.length - 1]!;
+                    if (frame.nextOptionIndex >= frame.options.length) {
+                        backtrackingFrames.pop();
+                        continue;
+                    }
+
+                    targets = targets.slice(0, frame.targetIndex);
+                    targets.push(frame.options[frame.nextOptionIndex++]!);
                     options = TargetBuilder.getNextSelector(game, player, item, targets, effectId, false, true);
-                    const prevChooseOneIdx = options.options.findIndex((opt: any) => opt.description === prevChooseOneOption);
-                    if(prevChooseOneIdx === -1)
-                        throw new GameError(`Could not find previous choose-one option "${prevChooseOneOption}" among options: ${options.options.map((opt: any) => opt.description).join(", ")}`, toSerializedTranslation("error.behaviorError", { error: `Could not find previous choose-one option "${prevChooseOneOption.description}" among options: ${options.options.map((opt: any) => opt.description).join(", ")}`}));
-                    if(options.options.length <= prevChooseOneIdx + 1)
-                        return "No valid targets. (No option to backtrack to)";
-                    targets.push(options.options[prevChooseOneIdx+1]);
-                    options = TargetBuilder.getNextSelector(game, player, item, targets, effectId, false, true);
-                    // continue;
+                    return true;
                 }
-                if(options.isChooseOne)
-                    backtrackingIndices.push(targets.length);
-                targets.push(...selection);
-                options = TargetBuilder.getNextSelector(game, player, item, targets, effectId, false, true);
-            }
-            try {
-                // Convert serialized selection items into resolved targets expected by game/player APIs
-                const resolved = TargetBuilder.buildTargets(game, player, item, targets, effectId);
-                return {index: effectId, targets: resolved};
-            } catch (e) {
-                // console.error(`Error building targets for item ${item.name}, effectId: ${effectId}:`, e);
-                // If conversion fails, try next effect
-                continue;
+                return false;
+            };
+
+            while (true) {
+                if (!options.complete) {
+                    if (options.options.length < options.min) {
+                        if (tryBacktrack()) continue;
+                        break;
+                    }
+
+                    // Pick a number uniformly between min and the available maximum.
+                    const upper = Math.min(options.max, options.options.length);
+                    const range = upper - options.min + 1;
+                    const nbToSelect = options.min + (range > 0 ? Math.floor(Math.random() * range) : 0);
+
+                    let selection: SelectionItem[];
+                    if (options.isChooseOne) {
+                        // Keep one randomized ordering for this decision, so retries
+                        // advance through the original order instead of reshuffling it.
+                        const candidates = [...options.options];
+                        shuffle(Math.random, candidates);
+                        backtrackingFrames.push({
+                            targetIndex: targets.length,
+                            options: candidates,
+                            nextOptionIndex: 1,
+                        });
+                        selection = candidates.slice(0, nbToSelect);
+                    } else {
+                        const shuffledOptions = [...options.options];
+                        shuffle(Math.random, shuffledOptions);
+                        selection = shuffledOptions.slice(0, nbToSelect);
+                    }
+
+                    targets.push(...selection);
+                    options = TargetBuilder.getNextSelector(game, player, item, targets, effectId, false, true);
+                    continue;
+                }
+
+                try {
+                    // console.log(JSON.stringify(TargetBuilder.convertToSelectionItems(targets), null, 2));
+                    // Convert serialized selection items into resolved targets expected by game/player APIs.
+                    const resolved = TargetBuilder.buildTargets(game, player, item, targets, effectId);
+                    return {index: effectId, targets: resolved};
+                } catch {
+                    // A selector can expose a target that fails final validation; try
+                    // the next unvisited choose-one branch before abandoning this effect.
+                    if (tryBacktrack()) continue;
+                    break;
+                }
             }
         }
         return "No valid targets found for any effect.";
