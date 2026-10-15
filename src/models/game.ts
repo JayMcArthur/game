@@ -662,7 +662,7 @@ export class Game {
    */
   async startTurn(): Promise<void> {
     this.players.forEach((p) => {
-      p.initializeTurnCounters(p === this.currentPlayer, this.gameParameters.lootPlayPerTurn.value);
+      p.initializeTurnCounters(p === this.currentPlayer);
     });
     for(const room of this.rooms?.activeRooms ?? [])
     {
@@ -691,6 +691,7 @@ export class Game {
    */
   lootStep(player: Player, numberToLoot: number): void {
     this.loot(player, numberToLoot, "lootStep");
+    player.addLootPlay(this.gameParameters.lootPlayPerTurn.value);
     this.emit("on:your:turn", { eventIssuer: player });
   }
 

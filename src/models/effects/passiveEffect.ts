@@ -538,23 +538,29 @@ export function rollAndMayChangeNextRollForThis(game: Game): SyncParsedEffect {
             let offRoll: (() => void) | null = null;
 
             const savedRoll = game.rollDice(data.issuer, data.it);
-            offRoll = game.emitter.on("on:dice:being-rolled", ({ diceRoll }) => {
-                const effect:EffectFunction = async (effectData: EffectData): Promise<boolean> => {
-                    if(!(data.issuer instanceof Player))
-                        throw new GameError("rollAndMayChangeNextRollForThis issuer should be a player.", toSerializedTranslation("error.behaviorError", {error: "rollAndMayChangeNextRollForThis issuer should be a player."}));
-                    if (diceRoll.issuer !== data.issuer) return false;
-                    if( savedRoll === diceRoll) return false;
-                    if(savedRoll.value !== diceRoll.value)
-                    {
-                        const newValue = (await data.selectAndRecord(game, data.issuer, 1, 1, [diceRoll.value, savedRoll.value], toSerializedTranslation("pending.resultOfDiceRoll"), data.serializedCardAndBox, true, true)).selected[0]!;
-                        diceRoll.value = newValue;
+            const effect = (effectData: EffectData): boolean => {
+                offRoll = game.emitter.on("on:dice:being-rolled", ({ diceRoll }) => {
+                    if(diceRoll.card === data.it)
+                        return;
+                    const effect:EffectFunction = async (effectData: EffectData): Promise<boolean> => {
+                        if(!(data.issuer instanceof Player))
+                            throw new GameError("rollAndMayChangeNextRollForThis issuer should be a player.", toSerializedTranslation("error.behaviorError", {error: "rollAndMayChangeNextRollForThis issuer should be a player."}));
+                        if (diceRoll.issuer !== data.issuer) return false;
+                        if( savedRoll === diceRoll) return false;
+                        if(savedRoll.value !== diceRoll.value)
+                        {
+                            const newValue = (await data.selectAndRecord(game, data.issuer, 1, 1, [diceRoll.value, savedRoll.value], toSerializedTranslation("pending.resultOfDiceRoll"), data.serializedCardAndBox, true, true)).selected[0]!;
+                            diceRoll.value = newValue;
+                        }
+                        return true;
                     }
-                    return true;
-                }
-                addPassiveEffectToStack(game, effect, data, "Choose the result of this dice roll.");
-                offRoll!();
-                offEndTurn!();
-            });
+                    addPassiveEffectToStack(game, effect, data, "Choose the result of this dice roll.");
+                    offRoll!();
+                    offEndTurn!();
+                });
+                return true;
+            };
+            savedRoll.attachEffect(effect, data.it, data.targets, data.issuer);
 
             offEndTurn = game.emitter.on("on:turn:end", ({ eventIssuer }) => {
                 offRoll!();

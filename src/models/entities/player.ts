@@ -227,7 +227,7 @@ export class Player extends Entity {
    * Returns true if the player has any attack requirement (must attack)
    */
   get hasAttackRequirement(): boolean {
-    return this._mustAttackEntity.length > 0;
+    return this._mustAttackEntity.filter(req => (req.checkAttackRemaining === false || this.attackThisTurn > 0)).length > 0;
   }
   
   /**
@@ -593,8 +593,8 @@ export class Player extends Entity {
   /**
    * Initializes per-turn action counters for this player.
    */
-  initializeTurnCounters(isCurrentPlayer: boolean, lootPlayPerTurn: number): void {
-    this._remainingLootPlay = isCurrentPlayer ? lootPlayPerTurn : 0;
+  initializeTurnCounters(isCurrentPlayer: boolean): void {
+    this._remainingLootPlay = 0;
     this._attackThisTurn = isCurrentPlayer ? 1 : 0;
     this._remainingPurchaseThisTurn = isCurrentPlayer ? 1 : 0;
   }

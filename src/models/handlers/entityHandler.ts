@@ -400,7 +400,7 @@ export class EntityHandler {
     // Filter monsters that are still in play
     const validMonsters = requirement.filter(
       (req) => 
-        (req.checkAttackRemaining === false || player.attackThisTurn > 0) &&
+        // (req.checkAttackRemaining === false || player.attackThisTurn > 0) &&
         (req.targets === "topDeck" || req.targets === "any" || req.targets.some(target => this.game.attackableEntities.includes(target)))
     );
 
@@ -408,6 +408,9 @@ export class EntityHandler {
       player.clearAttackRequirement(); // All monsters gone, constraint lifted
       return true;
     }
+
+    if (validMonsters.every(req => (req.checkAttackRemaining === true && player.attackThisTurn <= 0)))
+      return;
 
     // At least one monster constraint remains - must be satisfied
     if (shouldThrow) {

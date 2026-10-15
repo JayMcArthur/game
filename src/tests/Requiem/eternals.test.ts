@@ -229,12 +229,11 @@ describe("Four Souls+2 Eternal Items", () => {
         expect(player1.character!.slug).toBe("r-the_capricious");
         const eternal = player1.inPlay[0]!;
         expect(eternal.slug).toBe("r-glitch");
-
-        expect(player1.remainingLootPlay).toBe(10);
+        expect(player1.remainingLootPlay).toBe(0);
         game.cardHandler.recharge(player1.character);
         await game.activateItem(player1, player1.character, ["Play an additional loot card this turn."], "tap");
         await game.actions.resolveStack();
-        expect(player1.remainingLootPlay).toBe(11);
+        expect(player1.remainingLootPlay).toBe(1);
 
         const shopItem = game.shop.itemsInShop[0]!;
         game.cardHandler.recharge(player1.character);
