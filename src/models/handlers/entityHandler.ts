@@ -410,7 +410,7 @@ export class EntityHandler {
     }
 
     if (validMonsters.every(req => (req.checkAttackRemaining === true && player.attackThisTurn <= 0)))
-      return;
+      return true;
 
     // At least one monster constraint remains - must be satisfied
     if (shouldThrow) {
