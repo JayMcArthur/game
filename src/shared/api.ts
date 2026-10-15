@@ -75,7 +75,9 @@ export type Card = z.infer<typeof cardSchema>;
 const cardAndEffectTextNumberSchema = effectTextNumberSchema.extend({
   card: cardSchema,
 });
-export type CardAndEffectTextNumber = z.infer<typeof cardAndEffectTextNumberSchema>;
+export type CardAndEffectTextNumber = z.infer<
+  typeof cardAndEffectTextNumberSchema
+>;
 const playableCardSchema = cardSchema.extend({
   canBePlayed: capabilitySchema,
 });
@@ -1125,8 +1127,10 @@ const gameOverScreenPlayerDataSchema = z.object({
   type: z.enum(["win", "lose"]),
   title: serializedTranslationSchema,
 });
-export type GameOverScreenPlayerData = z.infer<typeof gameOverScreenPlayerDataSchema>;
-  
+export type GameOverScreenPlayerData = z.infer<
+  typeof gameOverScreenPlayerDataSchema
+>;
+
 const gameOverBroadcastSchema = z.object({
   type: "gameOver",
   data: z.array(gameOverScreenPlayerDataSchema),
@@ -1427,7 +1431,6 @@ export namespace Responses {
   export type AdminChangeMessageStatus = BasicResponse;
   export type AdminReplyToMessage = AdminReplyToMessageResponse;
 }
-
 
 export interface ServerToClientEvents {
   "on:room:changed": (room: Room | null) => void;
