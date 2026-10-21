@@ -3326,10 +3326,10 @@ export function addOrSubtractXFromRollEffect(game: Game): SyncEffectFunction {
     return (data: EffectData) => {
         const chosenDiceRoll: DiceRoll = data.next as DiceRoll;
         const value = data.next as number;
-        if (value === 1) 
-            chosenDiceRoll.add(1);
-        else if (value === -1)
-            chosenDiceRoll.subtract(1);
+        if (value > 0) 
+            chosenDiceRoll.add(value);
+        else if (value < 0)
+            chosenDiceRoll.subtract(Math.abs(value));
         return true;
     };
 }
