@@ -1,7 +1,7 @@
 import { Game } from "@/models/game";
 import { GameError } from "@/models/GameError";
 import type { HistoricEntry } from "@/models/handlers/historyHandler";
-import { schemas, Team } from "@/shared/api";
+import { schemas } from "@/shared/api";
 import { loadGameFromLogs } from "@/utils/loadGameFromLogs";
 import { generateUserId } from "@/utils/random";
 import { toSerializedTranslation } from "@/utils/translation";
@@ -10,6 +10,10 @@ import { globalEndpoints } from "./global";
 import { enterIntroStep } from "./introStep";
 import { MAX_PLAYER_COUNT, roomManager } from "./roomManager";
 import { type Room, type Socket, type User } from "./types";
+import {
+  addRoomBot, assertBotLobby, removeRoomBot, roomGamePlayers,
+  roomHasPlayerName, roomPlayers, setRoomBotLevel, unusedPlayerName,
+} from "./botSeats";
 import {
   attachGameEventListeners,
   errorGuardedEndpoint,
@@ -23,6 +27,8 @@ import {
   sendRoomChangedToUser,
   sendUserAssigned,
   updatePlayerCount,
+  startRoomBots,
+  stopRoomBots,
 } from "./utils";
 
 export const enterStartStep = (
@@ -98,11 +104,7 @@ export const enterStartStep = (
             });
           }
 
-          if (
-            room.users.some((user) =>
-              user.instances.some((instance) => instance.name === payload),
-            )
-          ) {
+          if (roomHasPlayerName(room, payload)) {
             return callback({
               status: 400,
               error: "That name is already taken",
@@ -130,6 +132,13 @@ export const enterStartStep = (
         schemas.setTeamRequest,
         callback,
         (payload) => {
+          const bot = room.bots?.find(seat => seat.name === payload.name);
+          if (bot) {
+            assertBotLobby(room, user, socket);
+            bot.team = payload.team;
+            sendRoomChangedToAll(room);
+            return callback({ status: 200 });
+          }
           const targetUser = getUserByName(room, payload.name);
           if (!targetUser) {
             return callback({ status: 400, error: "User not found" });
@@ -155,6 +164,13 @@ export const enterStartStep = (
         schemas.selectCharacterRequest,
         callback,
         (payload) => {
+          const bot = room.bots?.find(seat => seat.name === payload.name);
+          if (bot) {
+            assertBotLobby(room, user, socket);
+            bot.character = payload.character;
+            sendRoomChangedToAll(room);
+            return callback({ status: 200 });
+          }
           const targetUser = user.instances.find(
             (user) => user.name === payload.name,
           );
@@ -170,6 +186,44 @@ export const enterStartStep = (
   );
 
   if (user.isHost) {
+    socket.on("addBot", async (request, callback) =>
+      errorGuardedEndpoint(callback, async () =>
+        payloadGuardedEndpoint(request, schemas.addBotRequest, callback, payload => {
+          assertBotLobby(room, user, socket);
+          addRoomBot(room, payload, MAX_PLAYER_COUNT);
+          updatePlayerCount(room);
+          registerRoomActivity(room);
+          sendRoomChangedToAll(room);
+          return callback({ status: 200 });
+        }),
+      ),
+    );
+
+    socket.on("removeBot", async (request, callback) =>
+      errorGuardedEndpoint(callback, async () =>
+        payloadGuardedEndpoint(request, schemas.removeBotRequest, callback, payload => {
+          assertBotLobby(room, user, socket);
+          removeRoomBot(room, payload);
+          updatePlayerCount(room);
+          registerRoomActivity(room);
+          sendRoomChangedToAll(room);
+          return callback({ status: 200 });
+        }),
+      ),
+    );
+
+    socket.on("setBotLevel", async (request, callback) =>
+      errorGuardedEndpoint(callback, async () =>
+        payloadGuardedEndpoint(request, schemas.setBotLevelRequest, callback, payload => {
+          assertBotLobby(room, user, socket);
+          setRoomBotLevel(room, payload);
+          registerRoomActivity(room);
+          sendRoomChangedToAll(room);
+          return callback({ status: 200 });
+        }),
+      ),
+    );
+
     socket.on("kickFromRoom", async (request, callback) =>
       errorGuardedEndpoint(callback, async () =>
         payloadGuardedEndpoint(
@@ -221,7 +275,7 @@ export const enterStartStep = (
               return callback({ status: 400, error: "User not found" });
             }
             if (
-              room.users.flatMap((u) => u.instances).length >= MAX_PLAYER_COUNT
+              roomPlayers(room).length >= MAX_PLAYER_COUNT
             ) {
               return callback({ status: 400, error: "Room is full" });
             }
@@ -238,6 +292,7 @@ export const enterStartStep = (
               newName = newName.slice(0, 15) + "…";
             }
 
+            newName = unusedPlayerName(room, newName);
             original.user.instances.push({
               id: generateUserId(),
               name: newName,
@@ -324,10 +379,12 @@ export const enterStartStep = (
                     "Logs are not valid JSON or not in the expected format.",
                 }),
               );
+            stopRoomBots(room);
             room.game = await loadGameFromLogs(logs);
             room.gameCount++;
 
             attachGameEventListeners(room);
+            startRoomBots(room);
 
             if (!isRoomWithGame(room)) {
               return callback({ status: 400, error: "Game not found" });
@@ -372,26 +429,13 @@ export const enterStartStep = (
 
     socket.on("start", async (callback) =>
       errorGuardedEndpoint(callback, async () => {
+        assertBotLobby(room, user, socket);
+        if (roomPlayers(room).length > MAX_PLAYER_COUNT) throw new Error("Room is full");
         const params = room.params;
 
         const game = new Game("", params);
 
-        const playersWithCharacters: {
-          issuer: string;
-          character: string;
-          user: string;
-          team: Team;
-        }[] = [];
-        for (const user of room.users) {
-          for (const instance of user.instances) {
-            playersWithCharacters.push({
-              issuer: instance.name,
-              character: instance.character.character,
-              user: user.socket.id,
-              team: instance.team,
-            });
-          }
-        }
+        const playersWithCharacters = roomGamePlayers(room);
 
         game.startOfGameSetup(playersWithCharacters);
         game.addToHistory({
@@ -418,6 +462,7 @@ export const enterStartStep = (
           enterGameStep(socket, room, user);
         }
         sendRoomChangedToAll(room);
+        startRoomBots(room);
         await game.atGameStartDecisions();
 
         return callback({ status: 200 });

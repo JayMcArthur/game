@@ -1,0 +1,10 @@
+{
+  "schemaVersion": 1,
+  "rules": [
+    { "id": "strength-for-actor", "version": 1, "enabled": true, "levels": ["normal", "hard"], "pattern": "self-strength", "sourceSlug": "b2-xi_strength", "minimumBenefit": 0.1 },
+    { "id": "death-denies-leader", "version": 1, "enabled": true, "levels": ["normal", "hard"], "pattern": "hostile-death", "sourceSlug": "b2-xiii_death", "minimumBenefit": 1 },
+    { "id": "steal-useful-leader-item", "version": 1, "enabled": true, "levels": ["normal", "hard"], "pattern": "hostile-steal", "sourceSlug": "b2-pay_to_play", "minimumBenefit": 1 },
+    { "id": "bomb-benefits-actor", "version": 1, "enabled": true, "levels": ["normal", "hard"], "pattern": "beneficial-bomb", "sourceSlug": "b2-bomb", "minimumBenefit": 0.1 },
+    { "id": "blank-before-coin-loot", "version": 1, "enabled": true, "levels": ["hard"], "pattern": "copy-coin-loot", "sourceSlug": "b2-blank_card", "minimumBenefit": 1 }
+  ]
+}

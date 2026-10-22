@@ -1,5 +1,6 @@
 import { generateUserId } from "@/utils/random";
-import { Team, type Responses } from "@/shared/api";
+import type { Responses } from "@/shared/api";
+import { roomHasPlayerName, roomPlayers, unusedPlayerTeam } from "./botSeats";
 import { toSerializedTranslation } from "@/utils/translation";
 import { MAX_PLAYER_COUNT, roomManager } from "./roomManager";
 import { enterStartStep } from "./startStep";
@@ -30,9 +31,7 @@ export const joinRoomAsPlayer = (
     });
   }
 
-  if (
-    room.users.flatMap((user) => user.instances).length >= MAX_PLAYER_COUNT
-  ) {
+  if (roomPlayers(room).length >= MAX_PLAYER_COUNT) {
     return callback({
       status: 400,
       error: toSerializedTranslation("error.roomFull"),
@@ -67,24 +66,12 @@ export const joinRoomAsPlayer = (
     });
   }
 
-  if (
-    room.users.some((user) =>
-      user.instances.some((instance) => instance.name === name),
-    )
-  ) {
+  if (roomHasPlayerName(room, name)) {
     return callback({
       status: 400,
       error: toSerializedTranslation("error.nameAlreadyExists"),
     });
   }
-
-  const firstUnusedTeam =
-    [Team.Team1, Team.Team2, Team.Team3, Team.Team4].find(
-      (team) =>
-        !room.users.some((user) =>
-          user.instances.some((instance) => instance.team === team),
-        ),
-    ) ?? Team.Team1;
 
   const instance: Instance = {
     id: generateUserId(),
@@ -92,7 +79,7 @@ export const joinRoomAsPlayer = (
     isCopy: false,
     isActive: true,
     character: DEFAULT_CHARACTER,
-    team: firstUnusedTeam,
+    team: unusedPlayerTeam(room),
   };
   const user: User = {
     instances: [instance],

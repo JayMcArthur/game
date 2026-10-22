@@ -5,6 +5,7 @@ import {
   sendRoomChangedToAll,
   sendRoomChangedToUser,
   sendUserAssigned,
+  stopRoomBots,
 } from "./utils";
 import { CARD_SETS } from "@/models/handlers/cardHandler";
 import type { AdminRoom, RoomCharacter } from "@/shared/api";
@@ -81,6 +82,7 @@ class RoomManager {
     const room: Room = {
       id: roomId,
       users: [user],
+      bots: [],
       spectators: [],
       lastActionTimestamp: new Date(),
       params: new GameParameters(() => {
@@ -113,6 +115,7 @@ class RoomManager {
   deleteRoom(roomId: string): void {
     const room = this.rooms.get(roomId);
     if (room) {
+      stopRoomBots(room);
       this.finalizeGameRecord(room);
     }
     try {
@@ -136,9 +139,7 @@ class RoomManager {
     if (!room.game) return;
     const params = room.game.gameParameters;
     const teamCount = new Set(
-      room.users
-        .flatMap((user) => user.instances)
-        .map((instance) => instance.team),
+      room.game.players.map(player => player.team),
     ).size;
     insertGameRecord(
       room.id,

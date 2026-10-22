@@ -45,3 +45,7 @@ db/
 .gitignore
 .vscode
 *.sqlite
+
+# local development environment
+/flake.nix
+/flake.lock

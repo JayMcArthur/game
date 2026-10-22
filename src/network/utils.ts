@@ -19,6 +19,8 @@ import { getAdminMessages, getHourlyGameStats } from "@/utils/db";
 import { Game } from "@/models/game";
 import { GameError } from "@/models/GameError";
 import { toSerializedTranslation } from "@/utils/translation";
+import { BotRunner } from "@/bots/runner";
+import { configuredGameBotSeats, roomPlayers } from "./botSeats";
 
 export const errorGuardedEndpoint = async (
   callback: (response: {
@@ -130,7 +132,7 @@ export const getJoinCapability = (room: Room): Capability => {
   if (room.game !== undefined) {
     return toSerializedTranslation("error.gameStarted");
   }
-  if (room.users.flatMap((user) => user.instances).length >= MAX_PLAYER_COUNT) {
+  if (roomPlayers(room).length >= MAX_PLAYER_COUNT) {
     return toSerializedTranslation("error.roomFull");
   }
   return true;
@@ -182,18 +184,43 @@ export const sendEndGameBroadcast = (
 };
 
 
+export const stopRoomBots = (room: Room): void => {
+  room.botRunner?.stop();
+  delete room.botRunner;
+};
+
+export const startRoomBots = (room: Room): void => {
+  stopRoomBots(room);
+  const game = room.game;
+  if (!game || game.reachedEnd) return;
+  const seats = configuredGameBotSeats(room);
+  if (!seats.length) return;
+  room.botRunner = new BotRunner(
+    game,
+    seats.map(seat => ({ playerId: seat.name, level: seat.level })),
+    {
+      onError: error => console.error("[BotRunner] Bot decision/execution diagnostic", error),
+      onDecision: () => registerRoomActivity(room),
+    },
+  );
+  room.botRunner.start();
+};
+
 export const attachGameEventListeners = (room: Room): void => {
-  if (!room.game) return;
+  const game = room.game;
+  if (!game) return;
 
-  room.game.onStateChange.add(() => {
-    sendRoomChangedToAll(room);
+  game.onStateChange.add(() => {
+    if (room.game === game) sendRoomChangedToAll(room);
   });
 
-  room.game.onRoomBroadcast.add((broadcast) => {
-    sendRoomBroadcast(room, broadcast);
+  game.onRoomBroadcast.add((broadcast) => {
+    if (room.game === game) sendRoomBroadcast(room, broadcast);
   });
 
-  room.game.onEndReached.add((broadcast) => {
+  game.onEndReached.add((broadcast) => {
+    if (room.game !== game) return;
+    stopRoomBots(room);
     sendEndGameBroadcast(room, broadcast);
   });
 };
@@ -225,18 +252,25 @@ const generateRoomChangedPayload = (
 
   return {
     id: room.id,
-    players: room.users
-      .map((user) =>
-        user.instances.flatMap((instance) => ({
-          isMe: user.instances.some((i) => i.id === recipient.id),
-          isHost: user.isHost,
-          isCopy: instance.isCopy,
-          name: instance.name,
-          character: instance.character,
-          team: instance.team,
-        })),
-      )
-      .flat(),
+    players: [
+      ...room.users.flatMap(user => user.instances.map(instance => ({
+        isMe: user.instances.some(i => i.id === recipient.id),
+        isHost: user.isHost,
+        isCopy: instance.isCopy,
+        name: instance.name,
+        character: instance.character,
+        team: instance.team,
+      }))),
+      ...(room.bots ?? []).map(seat => ({
+        isMe: false,
+        isHost: false,
+        isCopy: false,
+        name: seat.name,
+        character: seat.character,
+        team: seat.team,
+        bot: { id: seat.id, level: seat.level },
+      })),
+    ],
     characters: room.characters,
     gameParameters: room.params.toJson(),
     game,
@@ -258,9 +292,7 @@ export const sendUserAssigned = (
 };
 
 export const updatePlayerCount = (room: Room): void => {
-  room.params.setPlayerCount(
-    room.users.flatMap((user) => user.instances).length,
-  );
+  room.params.setPlayerCount(roomPlayers(room).length);
 };
 
 export const leaveCurrentStep = (socket: Socket): void => {

@@ -7,6 +7,9 @@
     "ts": "tsc --noEmit",
     "lint": "eslint \"src/**/*.{js,ts}\"",
     "test": "bun test",
+    "test:bots": "bun test src/tests/bots src/tests/botSeats.test.ts --max-concurrency 1",
+    "bots:play": "bun scripts/bots/play.ts",
+    "bots:records": "bun scripts/bots/records.ts",
     "test:watch": "bun test --watch"
   },
   "devDependencies": {

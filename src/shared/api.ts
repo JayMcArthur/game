@@ -1062,6 +1062,18 @@ const roomCharacterSchema = z.object({
 });
 export type RoomCharacter = z.infer<typeof roomCharacterSchema>;
 
+export const botLevelSchema = z.enum(["easy", "normal", "hard"]);
+export type BotLevel = z.infer<typeof botLevelSchema>;
+
+const addBotRequestSchema = z.object({
+  level: botLevelSchema,
+  name: z.string().min(1).max(16).regex(/^[a-zA-Z0-9_]+$/).optional(),
+}).strict();
+const removeBotRequestSchema = z.object({ id: z.string().min(1) }).strict();
+const setBotLevelRequestSchema = removeBotRequestSchema.extend({
+  level: botLevelSchema,
+}).strict();
+
 const roomPlayerSchema = z.object({
   name: z.string(),
   character: roomCharacterSchema,
@@ -1069,6 +1081,7 @@ const roomPlayerSchema = z.object({
   isHost: z.boolean(),
   isCopy: z.boolean(),
   team: z.enum(Team),
+  bot: z.object({ id: z.string(), level: botLevelSchema }).optional(),
 });
 
 export type RoomPlayer = z.infer<typeof roomPlayerSchema>;
@@ -1293,6 +1306,9 @@ export type AdminReplyToMessageResponse = z.infer<
 >;
 
 export const schemas = {
+  addBotRequest: addBotRequestSchema,
+  removeBotRequest: removeBotRequestSchema,
+  setBotLevelRequest: setBotLevelRequestSchema,
   issuer: issuerSchema,
   room: roomSchema,
   createRoomRequest: createRoomRequestSchema,
@@ -1330,6 +1346,9 @@ export const schemas = {
 };
 
 export namespace Requests {
+  export type AddBot = z.infer<typeof addBotRequestSchema>;
+  export type RemoveBot = z.infer<typeof removeBotRequestSchema>;
+  export type SetBotLevel = z.infer<typeof setBotLevelRequestSchema>;
   export type CreateRoom = z.infer<typeof createRoomRequestSchema>;
   export type SetName = z.infer<typeof setNameRequestSchema>;
   export type SetTeam = z.infer<typeof setTeamRequestSchema>;
@@ -1380,6 +1399,9 @@ export namespace Requests {
 }
 
 export namespace Responses {
+  export type AddBot = BasicResponse;
+  export type RemoveBot = BasicResponse;
+  export type SetBotLevel = BasicResponse;
   export type SetName = BasicResponse;
   export type SetTeam = BasicResponse;
   export type SetGameParameter = BasicResponse;
@@ -1443,6 +1465,19 @@ export interface ServerToClientEvents {
 }
 
 export interface ClientToServerEvents {
+  addBot: (
+    request: Requests.AddBot,
+    callback: (response: Responses.AddBot) => void,
+  ) => void;
+  removeBot: (
+    request: Requests.RemoveBot,
+    callback: (response: Responses.RemoveBot) => void,
+  ) => void;
+  setBotLevel: (
+    request: Requests.SetBotLevel,
+    callback: (response: Responses.SetBotLevel) => void,
+  ) => void;
+
   createRoom: (
     request: Requests.CreateRoom,
     callback: (response: Responses.CreateRoom) => void,

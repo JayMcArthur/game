@@ -3,7 +3,8 @@ import type { GameParameters } from "../models/gameParameters";
 import type { Game } from "../models/game";
 import type { ClientToServerEvents, ServerToClientEvents } from "@/shared/api";
 import type { Socket as SocketIO, Server as ServerIO } from "socket.io";
-import type { Team } from "@/shared/api";
+import type { BotLevel, Team } from "@/shared/api";
+import type { BotRunner } from "@/bots/runner";
 
 export type Socket = SocketIO<ClientToServerEvents, ServerToClientEvents>;
 export type Server = ServerIO<ClientToServerEvents, ServerToClientEvents>;
@@ -34,10 +35,21 @@ export interface Spectator {
   viewingName: string;
 }
 
+/** A server-owned participant, independent of browser Users and sockets. */
+export interface BotSeat {
+  id: string;
+  name: string;
+  character: RoomCharacter;
+  team: Team;
+  level: BotLevel;
+}
+
 export interface Room {
   id: string;
   lastActionTimestamp: Date;
   users: User[];
+  bots?: BotSeat[];
+  botRunner?: BotRunner;
   spectators: Spectator[];
   params: GameParameters;
   characters: RoomCharacter[];

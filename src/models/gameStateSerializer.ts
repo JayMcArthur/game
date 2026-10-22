@@ -317,10 +317,10 @@ export class GameStateSerializer {
         capabilities: {
           targetableDeck: this.game.actions.canDeclareAttackOnEntity(player, "topDeck", false),
         },
-        inPlay: this.game.encounters._slots.filter(s => s.length > 0).map((m, index) => (
-          { card: m[m.length - 1]!, 
+        inPlay: this.game.encounters._slots.flatMap((m, index) => m.length > 0 ? [
+          { card: m[m.length - 1]!,
             monster: this.game.encounters.monsterIn(index), 
-            covered: this.game.encounters._slots[index]!.slice(0, -1).map(c => c.jsonAPI) })).map((m) => ({
+            covered: m.slice(0, -1).map(c => c.jsonAPI) }] : []).map((m) => ({
 
           top: {
             ... (m.card.jsonAPI),

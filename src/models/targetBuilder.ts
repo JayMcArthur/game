@@ -246,7 +246,7 @@ export class TargetBuilder {
             possibleTargets = (possibleTargets as ChooseOneOptions[]).filter(option => {
                 const nextSelector = this.getNextSelectorRaw(game, player, item, [...partialChoices, {type: "chooseOne", payload: {description: option.description, card: option.card.jsonAPI, visualEffectBox: option.visualEffectBox}}], effectId, throwIfNotCharged, true);
                 return nextSelector.complete
-                || (option.admissibleTargets && option.admissibleTargets.length > 0);
+                || (nextSelector.options.length > 0 && nextSelector.options.length >= nextSelector.min);
             });
             // Return choose-one option descriptions
             return {
