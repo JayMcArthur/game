@@ -1033,6 +1033,11 @@ function parseStandardASyncEffect(s: string, game: Game, nr: NumberRobustString,
         case "choose a player. the next time that player would die this turn, prevent death. if it's their turn, cancel everything that hasn't resolved and end it":
         case "choose a player. the next time that player would die this turn, prevent it. if it's their turn, cancel everything that hasn't resolved and end it":
             return { effectFunction: passive.cancelNextDeathOfAPlayer(game, s), targetSelectors: selectAlivePlayer(game) };
+        case "prevent the next x damage you would take this turn. when you prevent damage this way, deal x damage to another player": {
+            const preventAmount = nr.nextNumber();
+            const damageAmount = nr.nextNumber();
+            return noTargetEffect(passive.preventDamageAndDealDmgOnPreventEffect(preventAmount, damageAmount, game))
+        }
     }
     return null;
 }
@@ -1202,14 +1207,6 @@ function parseStandardSyncEffect(s: string, game: Game, nr: NumberRobustString, 
             return noTargetSyncEffect(active.forceAttackMonsterDeckEffect(game, 1, "additional")); 
         case "you gain x [atk] till the end of turn":
             return noTargetSyncEffect(passive.temporaryStatModifierEffect([game.entityHandler.addAttack.bind(game.entityHandler)], nr.nextNumber(), game, "issuer"));
-        case "prevent the next x damage you would take this turn. when you prevent damage this way, deal x damage to another player": {
-            const preventAmount = nr.nextNumber();
-            const damageAmount = nr.nextNumber();
-            return {
-                effectFunction: passive.preventDamageAndDealDmgOnPreventEffect(preventAmount, damageAmount, game),
-                targetSelectors: selectAnotherPlayer(game),
-            };
-        }
         case "choose a player or monster. they gain x [atk] till end of turn":
             return {
                 effectFunction: passive.temporaryStatModifierEffect([game.entityHandler.addAttack.bind(game.entityHandler)], nr.nextNumber(), game, "next"),
