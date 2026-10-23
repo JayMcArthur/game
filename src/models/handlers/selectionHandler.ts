@@ -166,6 +166,8 @@ export class SelectionHandler {
       canUseOnBoardSelection: boolean;
     }[]
   ): Promise<{ playerId: string; selected: T[]; remaining: T[] }[]> {
+    // The request that opens this selection must appear in history before its answers.
+    this.game.commitDeferredHistoryEntries();
     // In multiplayer mode: create promises for all players
     const promises = selections.map(async (sel) => {
       return new Promise<{

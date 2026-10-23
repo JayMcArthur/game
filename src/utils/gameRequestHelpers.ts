@@ -22,12 +22,10 @@ export async function executeAttackMonsterRequest(
   }
 
   const drawInIndex = payload.card === "top" ? payload.toCoverIndex : -1;
-  await game.actions.declareAttackOnEntity(player, monster, drawInIndex);
-  game.addToHistory({
-    type: "AttackMonster",
-    payload,
-    issuer: player.id,  
-  });
+  await game.runRecordedRequest(
+    { type: "AttackMonster", payload, issuer: player.id },
+    async () => game.actions.declareAttackOnEntity(player, monster, drawInIndex),
+  );
 }
 
 export async function executeActivateRequest(
@@ -58,20 +56,17 @@ export async function executeActivateRequest(
       partialChoices,
       payload.effectIndex,
     );
-    await game.actions.useCard(
-      payload.type,
-      player,
-      payload.index,
-      targets,
-      payload.effectIndex,
+    // Paid effect costs (e.g. "discard a loot card") may open a selection while activating.
+    await game.runRecordedRequest(
+      { type: "Activate", payload, issuer: player.id },
+      async () => game.actions.useCard(
+        payload.type,
+        player,
+        payload.index,
+        targets,
+        payload.effectIndex,
+      ),
     );
-  }
-  if (choices.complete) {
-    game.addToHistory({
-      type: "Activate",
-      payload,
-      issuer: player.id,
-    });
   }
   return choices;
 }
@@ -209,13 +204,12 @@ export async function executeGiveCoinsRequest(
   game.assert.noPendingSelection();
   const target = game.entityHandler.getPlayerById(payload.target);
   const amount = payload.coins;
-    if (!await game.giveCoins(player, target, amount))
-      return;
-    game.addToHistory({
-    type: "GiveCoins",
-    payload,
-    issuer: player.id,
-  });
+  // The recipient is asked to accept: their answer must come after this entry in history,
+  // and a declined gift must still be recorded, otherwise the answer is an orphan that desyncs replays.
+  await game.runRecordedRequest(
+    { type: "GiveCoins", payload, issuer: player.id },
+    async () => game.giveCoins(player, target, amount),
+  );
 }
 export function executeDebugLootTopRequest(
   game: Game,

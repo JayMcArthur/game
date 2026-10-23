@@ -42,7 +42,7 @@ export const enterGameStep = (
 
   socket.on("saveGame", async (callback) =>
     errorGuardedEndpoint(callback, () => {
-      const logs = JSON.stringify(room.game.log, null, 2);
+      const logs = JSON.stringify(room.game.saveLog, null, 2);
       return callback({ status: 200, logs });
     }),
   );
@@ -63,12 +63,17 @@ export const enterGameStep = (
         newGame = await loadGameFromLogs(logs);
       } catch (error) {
         console.error("Rollback failed while loading logs:", error);
+        // Wrap the replay error: on its own it reads as a refusal of the rollback (e.g. "Only the active player can resolve the stack").
         return callback({
           status: 400,
-          error:
-            error instanceof Error
-              ? error.message
-              : "Failed to load game from logs.",
+          error: toSerializedTranslation("error.rollbackReplayFailed", {
+            error:
+              error instanceof GameError && error.translation !== undefined
+                ? error.translation
+                : error instanceof Error
+                  ? error.message
+                  : "Failed to load game from logs.",
+          }),
         });
       }
 

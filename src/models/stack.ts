@@ -13,6 +13,7 @@ export function isStackElement(obj: any): obj is StackElement {
 export class Stack {
     _stack: StackElement[] = [];
     _nextId: number = 0;
+    _nextBatchId: number = 0;
     _game: Game;
     
     constructor(game: Game) {
@@ -228,7 +229,8 @@ export class Stack {
           groups[issuerId].push(el); 
         });
     
-        const batchMarker = `batch-${Date.now()}-${topElements[0]?.stackId ?? 0}`;
+        // Must not depend on wall-clock time: replays run faster than live play and must rebuild the same groups.
+        const batchMarker = `batch-${this._nextBatchId++}`;
         Object.entries(groups).forEach(([issuerId, elements]) => {
           if (elements.length <= 1) {
             elements.forEach((el) => {

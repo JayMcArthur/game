@@ -158,13 +158,34 @@ export class HistoricHandler {
   private _rollbackDetailedState?: DetailedState;
   private _currentDetailedState?: DetailedState;
   private _lastUserRequestIndex: number = -1;
+  private _deferredEntries: HistoricEntry[] = [];
+  /** History length right before the last user action recorded while no selection was pending. */
+  private _lastSettledLength: number = -1;
 
   constructor(game: Game) {
     this._game = game;
   }
 
   addToHistory(entry: HistoricEntry): void {
+    if (isGameAction(entry) && entry.type !== "SubmitSelection" && !this._game.hasPendingSelections)
+      this._lastSettledLength = this._history.length;
     this._history.push(entry);
+  }
+
+  /** Holds a request entry until the request either opens a selection or completes. */
+  deferEntry(entry: HistoricEntry): void {
+    this._deferredEntries.push(entry);
+  }
+
+  /** Records every deferred request entry, in the order the requests started. */
+  commitDeferredEntries(): void {
+    for (const entry of this._deferredEntries) this.addToHistory(entry);
+    this._deferredEntries = [];
+  }
+
+  /** Drops a deferred entry whose request failed before changing the game. */
+  discardDeferredEntry(entry: HistoricEntry): void {
+    this._deferredEntries = this._deferredEntries.filter((e) => e !== entry);
   }
 
   recordInitialGameState(game: Game): void {
@@ -215,6 +236,18 @@ export class HistoricHandler {
       gameState: game.detailedStateJSON(game.players[0]!),
     };
     return [...this._history, state];
+  }
+
+  /**
+   * Log meant to be loaded again. The loader replays answers from the log and cannot wait for new ones,
+   * so a save taken while a selection is pending stops at the last point where none was.
+   */
+  saveLog(game: Game): HistoricEntry[] {
+    if (!game.hasPendingSelections) return this.log(game);
+    if (this._lastSettledLength !== -1) return this._history.slice(0, this._lastSettledLength);
+    // Pending since the start of the game (e.g. Eden's starting item): replaying up to Start asks again.
+    const startIndex = this._history.findIndex((entry) => entry.type === "Start");
+    return this._history.slice(0, startIndex + 1);
   }
 
   get lastUserRequestIssuer(): string | null {
