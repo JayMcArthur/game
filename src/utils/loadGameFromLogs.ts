@@ -556,9 +556,6 @@ export async function loadGameFromLogs(
     for (const player of game.players) {
       player.animations(true);
     }
-    // The replay above may have re-applied a trailing "randomSeed" entry that is not part of the
-    // original game flow; drop it before appending the fresh post-load seed below.
-    game.removeTrailingRandomSeed();
     game.seed = "";
     if(game.stack.isEmpty())
       game.assert.lastTimedAction = 0;

@@ -1,4 +1,4 @@
-import { type ActiveEffectEntry, type CounterType, type BonusSoulCard, type DescriptiveVisualEffectBox, type IdentifierType, type VisualEffectBox, type DeckName, type SerializedChooseOne, type BasicSerializedTranslation, type SerializedTranslation, type SerializedCounter } from '@/shared/api';
+import { type ActiveEffectEntry, type CounterType, type BonusSoulCard, type DescriptiveVisualEffectBox, type IdentifierType, type VisualEffectBox, type DeckName, type SerializedChooseOne, type BasicSerializedTranslation, type SerializedTranslation, type SerializedCounter, type EffectTextNumber } from '@/shared/api';
 import type { BonusSoulCardType, CardRewards, CharacterCardType, EternalCardType, FlipData, GenericCardType, InPlayCardType, LootCardType, MonsterCardType, RoomCardType, TreasureCardType } from '@/types/cardTypes';
 import { print, shuffle } from '@/utils/auxiliary';
 import { toSerializedTranslation, translationKeyFromCardSlug } from '@/utils/translation';
@@ -46,8 +46,9 @@ class Card {
     protected _entity: Entity | undefined = undefined;
     protected _identityHash: string | null = null;
     protected _flipData: FlipData | undefined = undefined;
-    protected _counterHandler = new CounterHandler
+    protected _counterHandler = new CounterHandler();
     protected _separatorIds: CardEffectsRanges;
+    protected _effectTextNumbers: EffectTextNumber[] = [];
 
     constructor(id: number,
         globalId: number,
@@ -192,6 +193,12 @@ class Card {
     get keywords(): string[] {
         return this._keywords;
     }
+    get effectTextNumbers(): EffectTextNumber[] {
+        return this._effectTextNumbers;
+    }
+    addEffectTextNumber(effectTextNumber: EffectTextNumber): void {
+        this._effectTextNumbers.push(effectTextNumber);
+    }
     get tags(): { [key: string]: any } {
         return this._tags;
     }
@@ -205,12 +212,14 @@ class Card {
             nameKey: this.nameKey,
             globalId: this._globalId,
             orientation: this._type === "room" ? "landscape" : "portrait",
+            effectTextNumbers: this._effectTextNumbers
         };
         return {
             slug: this._slug,
             nameKey: this.nameKey,
             globalId: this._globalId,
             orientation: this._type === "room" ? "landscape" : "portrait",
+            effectTextNumbers: this._effectTextNumbers
         };
     }
     get subtype(): string {

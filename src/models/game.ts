@@ -212,6 +212,10 @@ export class Game {
   get log(): HistoricEntry[] {
     return this._historicHandler.log(this);
   }
+  /** History to save for a later load: never stops in the middle of a pending selection. */
+  get saveLog(): HistoricEntry[] {
+    return this._historicHandler.saveLog(this);
+  }
   /**
    * @returns the active RNG seed used to initialize the current game generator.
    */
@@ -854,9 +858,26 @@ export class Game {
     this._historicHandler.addToHistory(entry);
   }
 
-  /** Drops a trailing "randomSeed" history entry, e.g. one left over from a replay reseed. */
-  removeTrailingRandomSeed(): void {
-    this._historicHandler.removeTrailingRandomSeed();
+  /**
+   * Runs a user request and records its entry only if it has an effect on the game.
+   * The entry is recorded as soon as the request opens a selection (so the answers come after it in history,
+   * e.g. a paid effect cost), or when the request completes. Nothing is recorded if it throws before either.
+   */
+  async runRecordedRequest<T>(entry: HistoricEntry, request: () => Promise<T>): Promise<T> {
+    this._historicHandler.deferEntry(entry);
+    try {
+      const result = await request();
+      this._historicHandler.commitDeferredEntries();
+      return result;
+    } catch (e) {
+      this._historicHandler.discardDeferredEntry(entry);
+      throw e;
+    }
+  }
+
+  /** Records the entries of requests that are about to wait for a selection. */
+  commitDeferredHistoryEntries(): void {
+    this._historicHandler.commitDeferredEntries();
   }
 
   dispatch(): void {

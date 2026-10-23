@@ -794,7 +794,7 @@ describe("GameEventEmitter - listener reordering", () => {
 
 describe("TurnHandler", () => {
   it("should advance turns and rounds correctly", async () => {
-    const handler = new TurnHandler();
+    const handler = new TurnHandler(null as any);
     const p1 = new Player("player1", Team.Team1);
     p1.addAttackPoints(1); // Start with 1 attack points for testing
     p1.addHealthPoints(1); // Start with 1 health points for testing

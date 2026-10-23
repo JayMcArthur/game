@@ -192,7 +192,7 @@ describe("Target Builder Interface", () => {
     const cardIdentifiers = TargetBuilder["convertToSelectionItems"]([card]);
     expect(cardIdentifiers[0]).toEqual({
       type: "card",
-      payload: { nameKey: card.nameKey, slug: card.slug, globalId: card.globalId, orientation: "portrait" },
+      payload: { nameKey: card.nameKey, slug: card.slug, globalId: card.globalId, orientation: "portrait", effectTextNumbers: [] },
     });
 
     // Test number conversion - should return string numbers

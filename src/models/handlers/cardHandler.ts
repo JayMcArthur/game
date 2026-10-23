@@ -314,7 +314,7 @@ export class CardHandler {
 
 
   /**
-   * Transfers a card between players when legal.
+   * Transfers a card between players.
    */
   give(from: Player, to: Player, card: Card): boolean {
     if (from.targetableSouls.includes(card)) {
@@ -324,7 +324,7 @@ export class CardHandler {
     }
     
     if (card instanceof ItemCard) 
-      if (from.inPlay.includes(card) && !card.eternal) {
+        if (from.inPlay.includes(card)) {
         this.removeInPlay(from, card, false);
         this.addInPlay(to, card);
         return true;
@@ -352,7 +352,7 @@ export class CardHandler {
   swapItems(item1: ItemCard, item2: ItemCard): boolean {
     const owner1 = this.game.getOwner(item1);
     const owner2 = this.game.getOwner(item2);
-    if (owner1 && owner2 && item1.eternal === false && item2.eternal === false) {
+    if (owner1 && owner2) {
       this.removeInPlay(owner1, item1, false);
       this.removeInPlay(owner2, item2, false);
       this.addInPlay(owner1, item2);
@@ -554,8 +554,6 @@ export class CardHandler {
     for (const p of this.game.players) {
       if (p !== player) {
         if (p.inPlay.includes(target)) {
-          if(target.eternal)
-            throw new GameError("Cannot steal eternal items.", toSerializedTranslation("error.cannotStealEternalItems"));
           if(this.removeInPlay(p, target, false)) {
             this.addInPlay(player, target);
             return true;

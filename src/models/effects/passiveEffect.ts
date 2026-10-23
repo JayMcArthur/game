@@ -2250,7 +2250,6 @@ export function preventDamageAndDealDmgOnPreventEffect(prevent: number, deal: nu
                     const current = damageOnStack.damage[0] ?? 0;
                     const prevented = Math.min(current, prevent);
                     damageOnStack.damage[0] = current - prevented;
-                    prevent -= prevented;
                     const effect = async (data: EffectData): Promise<boolean> => {
                         if( prevented <= 0) return false;
                         if (!(data.issuer instanceof Player)) return false;
