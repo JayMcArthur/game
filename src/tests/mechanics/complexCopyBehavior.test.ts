@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it } from "bun:test";
 import { Game } from "../../models/game";
 import { Player } from "../../models/entities/player";
 import { setupTestGame } from "../testHelpers";
-import type { ItemCard, LootCard } from "@/models/cards";
+import type { ItemCard, LootCard, TreasureCard } from "@/models/cards";
 
 describe("Four Souls+2 Attack Requirements", () => {
 let game: Game;
@@ -174,5 +174,99 @@ let game: Game;
         await game.activateItem(player1, a, [b], "tap");
         await game.actions.resolveStack();
         expect(a.entity).toBeDefined();
+    });
+
+    async function setupGlitchWithShopItem(slug: string) {
+        const setup = await setupTestGame({
+            characters: ["r-the_capricious", "b2-isaac"],
+            monsters: ["b2-fly", "b2-fatty"],
+            randomSeed: "glitch-destruction",
+        });
+        game = setup.game;
+        player1 = setup.player1;
+        player2 = setup.player2!;
+        const item = game.obtainCard(slug) as TreasureCard;
+        game.shop._slots = [[item]];
+        await game.resolveEntireStack();
+        const glitch = player1.inPlay[0]!;
+        game.cardHandler.recharge(glitch);
+        return { glitch, item };
+    }
+
+    it("glitch can not use chaos card without destroying itself", async () => {
+        const { glitch, item } = await setupGlitchWithShopItem("b2-chaos_card");
+        game.select = async (_issuer, _min, max, opts) => {
+            const target = opts.find(opt => opt instanceof Player && opt === player2);
+            return { selected: target === undefined ? opts.slice(0, max) : [target], remaining: [] };
+        };
+        await game.activateItem(player1, glitch, [glitch.tags.copiedCards[0]!], "tap");
+        await game.resolveEntireStack();
+        expect(player2.isDead).toBe(false);
+        expect(player1.inPlay).toContain(glitch);
+        expect(game.shop.itemsInShop).toContain(item);
+    });
+
+    it("glitch can not use plan c without destroying itself", async () => {
+        const { glitch, item } = await setupGlitchWithShopItem("g2-plan_c");
+        const monster = game.monsters[0]!;
+        await game.activateItem(player1, glitch, [glitch.tags.copiedCards[0]!], "tap");
+        await game.resolveEntireStack();
+        expect(game.monsters).toContain(monster);
+        expect(player1.inPlay).toContain(glitch);
+        expect(game.shop.itemsInShop).toContain(item);
+    });
+
+    it("glitch can not use pandoras box without destroying itself", async () => {
+        const { glitch, item } = await setupGlitchWithShopItem("b2-pandoras_box");
+        game.random = () => 2/6 - 0.0001; // roll a 2
+        await game.activateItem(player1, glitch, [glitch.tags.copiedCards[0]!], "tap");
+        await game.resolveEntireStack();
+        expect(player1.coins).toBe(0);
+        expect(player1.inPlay).toContain(glitch);
+        expect(game.shop.itemsInShop).toContain(item);
+    });
+
+    it("glitch can not pay experimental treatments destruction cost", async () => {
+        const { glitch, item } = await setupGlitchWithShopItem("r-experimental_treatment");
+        game.random = () => 2/6 - 0.0001; // roll a 2
+        await game.activateItem(player1, glitch, [glitch.tags.copiedCards[0]!], "tap");
+        await game.resolveEntireStack();
+        expect(player1.hand.length).toBe(0);
+        expect(player1.inPlay).toContain(glitch);
+        expect(game.shop.itemsInShop).toContain(item);
+    });
+
+    it("gained pandoras box ability destroys the item using it", async () => {
+        await game.resolveEntireStack();
+        const item = game.obtainCard("b2-pandoras_box") as TreasureCard;
+        game.shop._slots = [[item]];
+        const breakfast = game.obtainCard("b2-breakfast") as TreasureCard;
+        game.cardHandler.addInPlay(player1, breakfast);
+        const copied = game.cardHandler.gainAbilities(player1, breakfast, item);
+        game.random = () => 2/6 - 0.0001; // roll a 2
+        game.cardHandler.recharge(breakfast);
+        await game.activateItem(player1, breakfast, [copied], "tap");
+        await game.resolveEntireStack();
+        expect(player1.inPlay).not.toContain(breakfast);
+        expect(game.decks.treasure.discard).toContain(breakfast);
+        expect(game.shop.itemsInShop).toContain(item);
+        expect(player1.coins).toBe(6);
+    });
+
+    it("gained experimental treatment ability destroys the item paying its cost", async () => {
+        await game.resolveEntireStack();
+        const item = game.obtainCard("r-experimental_treatment") as TreasureCard;
+        game.shop._slots = [[item]];
+        const breakfast = game.obtainCard("b2-breakfast") as TreasureCard;
+        game.cardHandler.addInPlay(player1, breakfast);
+        const copied = game.cardHandler.gainAbilities(player1, breakfast, item);
+        game.random = () => 2/6 - 0.0001; // roll a 2
+        game.cardHandler.recharge(breakfast);
+        await game.activateItem(player1, breakfast, [copied], "tap");
+        await game.resolveEntireStack();
+        expect(player1.inPlay).not.toContain(breakfast);
+        expect(game.decks.treasure.discard).toContain(breakfast);
+        expect(game.shop.itemsInShop).toContain(item);
+        expect(player1.hand.length).toBe(3);
     });
 });

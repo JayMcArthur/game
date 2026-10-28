@@ -1236,7 +1236,7 @@ export class CardHandler {
                 card.owner = effectIssuer;
                 const effectsWithValidTargets = card.activeEffectList.filter(e => {
                     if(TargetBuilder.validTargetExists(this.game, effectIssuer, card, e.index, e.visualEffectBox.startIndex) !== true) return false;
-                    return (e.index === "tap" || TargetBuilder.verifyPaiementCanBeMade(this.game, effectIssuer, card, e.description) === true);
+                    return (e.index === "tap" || TargetBuilder.verifyPaiementCanBeMade(this.game, effectIssuer, gainer, e.description) === true);
                 });
                 if(effectsWithValidTargets.length === 0)
                     return false;
@@ -1253,7 +1253,7 @@ export class CardHandler {
                 }
                 const targets =  await TargetBuilder.buildTargetsOnResolve(this.game, effectIssuer, card, effectId, partialChoices);
                 card.recharge();
-                const effectOnStack = await card.tryActivateEffect(targets, effectId);
+                const effectOnStack = await card.tryActivateEffect(targets, effectId, gainer);
                 this.game.addToStack(effectOnStack);
 
                 // triger all tap effects.
@@ -1263,7 +1263,7 @@ export class CardHandler {
                     {
                       const targets =  await TargetBuilder.buildTargetsOnResolve(this.game, effectIssuer, activeItem, effectId);
                       activeItem.recharge();
-                      const effectOnStack = await activeItem.tryActivateEffect(targets, effectId);
+                      const effectOnStack = await activeItem.tryActivateEffect(targets, effectId, gainer);
                       this.game.addToStack(effectOnStack);
                     }
                 return true;
