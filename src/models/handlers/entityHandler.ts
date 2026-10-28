@@ -468,7 +468,7 @@ export class EntityHandler {
     callback?: (data: EffectData) => boolean,
     callbackTargets: any[] = []
   ): void {
-    if (damage <= 0 || receiver.isDead) return;
+    if (damage <= 0) return;
 
     const damageArray = [damage];
 
@@ -514,8 +514,7 @@ export class EntityHandler {
     const receiver: Entity = elem.receiver;
     const source: DamageSource = elem._source;
     const stackIds = this.game.stack.currentStackIds;
-    if(receiver.isDead
-      || (elem._source instanceof DiceRoll && (elem.receiver.isEngagedInCombat === false && elem.from.isEngagedInCombat === false))
+    if ((elem._source instanceof DiceRoll && (elem.receiver.isEngagedInCombat === false && elem.from.isEngagedInCombat === false))
       || !this.entities.includes(receiver)
     ) 
       {

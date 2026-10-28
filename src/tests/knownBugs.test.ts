@@ -233,6 +233,53 @@ describe("Known bugs that have be corrected", () => {
 
     });
 
+    it("taking damage after death still triggers fanny pack", async () => {
+        await game.resolveEntireStack();
+        const breakfast = game.obtainCard("b2-breakfast") as ItemCard;
+        const pack = game.obtainCard("b2-fanny_pack") as ItemCard;
+        game.cardHandler.addInPlay(player2, breakfast);
+        game.cardHandler.addInPlay(player2, pack);
+        const source = {card: pack, visualEffectBox: undefined};
+        game.entityHandler.kill(player1, player2, source);
+        await game.actions.resolveStack();
+        expect(player2.isDead).toBe(true);
+        expect(player2.inPlay).toContain(pack);
+        expect(game.decks.treasure.discard).toContain(breakfast);
+
+        const hand = player2.hand.length;
+        game.entityHandler.dealDamage(player1, player2, source, 1);
+        await game.resolveEntireStack();
+        expect(player2.hand.length).toBe(hand + 1);
+        expect(player2.currentHealthPoints).toBe(0);
+        expect(player2.isDead).toBe(true);
+        expect(game.stack.isEmpty()).toBe(true);
+
+        game.entityHandler.dealDamage(player1, player2, source, 0);
+        await game.resolveEntireStack();
+        expect(player2.hand.length).toBe(hand + 1);
+    });
+
+    it("damage already on the stack still resolves after death", async () => {
+        await game.resolveEntireStack();
+        const breakfast = game.obtainCard("b2-breakfast") as ItemCard;
+        const pack = game.obtainCard("b2-fanny_pack") as ItemCard;
+        game.cardHandler.addInPlay(player2, breakfast);
+        game.cardHandler.addInPlay(player2, pack);
+        const source = {card: pack, visualEffectBox: undefined};
+        game.entityHandler.dealDamage(player1, player2, source, 1);
+        game.entityHandler.kill(player1, player2, source);
+        await game.actions.resolveStack();
+        expect(player2.isDead).toBe(true);
+        expect(player2.inPlay).toContain(pack);
+        expect(game.decks.treasure.discard).toContain(breakfast);
+        const hand = player2.hand.length;
+        await game.resolveEntireStack();
+        expect(player2.hand.length).toBe(hand + 1);
+        expect(player2.currentHealthPoints).toBe(0);
+        expect(player2.isDead).toBe(true);
+        expect(game.stack.isEmpty()).toBe(true);
+    });
+
     it("can not destroy an item in the discard.", async () => {
         const soul = game.decks.loot.draw();
         soul.soul = 1;
