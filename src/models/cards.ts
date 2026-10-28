@@ -500,7 +500,8 @@ export class ItemCard extends Card {
     return this._inplayType;
   }
   get requiresDiceWillRoll(): boolean{
-    return this._effectInterface.requiresDiceWillRoll;
+    const copiedCards: ItemCard[] = this.tags.copiedCards || [];
+    return this._effectInterface.requiresDiceWillRoll || copiedCards.some(c => c.requiresDiceWillRoll);
   }
   isActiveItem(): boolean {
     return (

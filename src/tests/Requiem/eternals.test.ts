@@ -1,10 +1,10 @@
-import type { ItemCard, MonsterCard } from "@/models/cards";
+import type { ItemCard, MonsterCard, TreasureCard } from "@/models/cards";
 import { beforeEach, describe, expect, it } from "bun:test";
 import { setTimeout } from "timers/promises";
 import { Game } from "../../models/game";
 import { Player } from "../../models/entities/player";
 import { setupTestGame } from "../testHelpers";
-import { AttackRollData } from "@/models/stackElement";
+import { AttackRollData, DiceWillRoll } from "@/models/stackElement";
 
 async function characterAdd1LootPlay(player1: Player, game: Game) {
     // verify character card works.
@@ -177,6 +177,45 @@ describe("Four Souls+2 Eternal Items", () => {
         await game.actions.resolveStack();
         for(const mob of mobs) 
             expect(game.monsters.map(m => m.card.slug).includes(mob)).toBe(false);
+    });
+
+    it("r-the_capricious (eternal) red candle before roll", async () => {
+        const setup = await setupTestGame({
+            characters: ["r-the_capricious", "b2-isaac"],
+            monsters: ["b2-fly", "b2-fatty"],
+            randomSeed: "glitch-red-candle",
+        });
+        game = setup.game;
+        player1 = setup.player1;
+        player2 = setup.player2!;
+        const candle = game.obtainCard("fsp2-red_candle") as TreasureCard;
+        game.shop._slots = [[candle]];
+        await game.resolveEntireStack();
+        const eternal = player1.inPlay[0]!;
+        const copied = (eternal.tags.copiedCards as ItemCard[])[0]!;
+        expect(copied.slug).toBe(candle.slug);
+        expect(eternal.tags.copiedCards.length).toBe(1);
+
+        game.random = () => 0; // roll a 1, the first number selected by the test helper
+        game.rollDice(player1, eternal);
+        expect(game.stack.peek() instanceof DiceWillRoll).toBe(true);
+        game.cardHandler.recharge(eternal);
+        const hp = player1.currentHealthPoints;
+        await game.activateItem(player1, eternal, [copied], "tap");
+        await game.resolveEntireStack();
+        expect(player1.currentHealthPoints).toBe(hp - 1);
+        expect(eternal.eternal).toBe(true);
+        expect(game.shop.itemsInShop).toContain(candle);
+
+        const breakfast = game.obtainCard("b2-breakfast") as TreasureCard;
+        game.shop._slots = [[breakfast]];
+        await game.endTurn();
+        await game.resolveEntireStack();
+        expect(eternal.tags.copiedCards.length).toBe(1);
+        expect(eternal.requiresDiceWillRoll).toBe(false);
+        game.rollDice(player2, eternal);
+        expect(game.stack.peek() instanceof DiceWillRoll).toBe(false);
+        await game.resolveEntireStack();
     });
 
     it("r-the_capricious (eternal) remove previous passive", async () => {
